@@ -274,13 +274,39 @@
 
         const btnAddExp = document.createElement('button')
         btnAddExp.className = 'btn btn-warning btn-sm'
-        btnAddExp.textContent = '➕ Chi phí'
+        btnAddExp.style.flex = '1'
+        btnAddExp.textContent = '➕ Thêm chi phí'
         btnAddExp.onclick = () => openForm('add-' + trip.id)
 
         const btnComplete = document.createElement('button')
         btnComplete.className = 'btn btn-success btn-sm'
+        btnComplete.style.flex = '1'
         btnComplete.textContent = '✓ Hoàn thành'
-        btnComplete.onclick = () => openForm('complete-' + trip.id)
+        btnComplete.onclick = () => {
+            const overlay = document.createElement('div')
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;justify-content:center;align-items:center;padding:16px'
+            const box = document.createElement('div')
+            box.style.cssText = 'background:white;border-radius:var(--radius);padding:24px;max-width:340px;width:100%;box-shadow:var(--shadow)'
+            const msg = document.createElement('p')
+            msg.style.cssText = 'margin:0 0 20px;font-size:1em;line-height:1.5'
+            msg.textContent = `Bác tài có chắc muốn hoàn thành chuyến "${trip.tuyen_duong}" không?`
+            const modalBtnRow = document.createElement('div')
+            modalBtnRow.style.cssText = 'display:flex;gap:8px'
+            const btnYes = document.createElement('button')
+            btnYes.className = 'btn btn-success'
+            btnYes.style.flex = '1'
+            btnYes.textContent = 'Có, hoàn thành'
+            btnYes.onclick = () => { overlay.remove(); openForm('complete-' + trip.id) }
+            const btnNo = document.createElement('button')
+            btnNo.className = 'btn btn-gray'
+            btnNo.style.flex = '1'
+            btnNo.textContent = 'Chưa, quay lại'
+            btnNo.onclick = () => overlay.remove()
+            modalBtnRow.append(btnYes, btnNo)
+            box.append(msg, modalBtnRow)
+            overlay.appendChild(box)
+            document.body.appendChild(overlay)
+        }
 
         btnBar.append(btnAddExp, btnComplete)
 
