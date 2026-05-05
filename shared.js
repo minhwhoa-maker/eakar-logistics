@@ -14,13 +14,6 @@ function formatMoney(n) {
     return (Number.isFinite(amount) ? amount : 0).toLocaleString('vi-VN') + ' đ'
 }
 
-function formatDate(dateStr) {
-    if (!dateStr) return ''
-    const d = new Date(dateStr)
-    if (isNaN(d.getTime())) return ''
-    return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(2)}`
-}
-
 // === Auth ===
 async function getUserRole(sb, email) {
     const { data, error } = await sb
@@ -84,4 +77,17 @@ function formatDate(dateStr) {
     const mo = String(d.getMonth() + 1).padStart(2, '0');
     const yy = String(d.getFullYear()).slice(2);
     return `${hh}:${mm} - ${dd}/${mo}/${yy}`;
+}
+function getLocation() {
+    return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+            reject(new Error('Thiết bị không hỗ trợ GPS'))
+            return
+        }
+        navigator.geolocation.getCurrentPosition(
+            pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+            err => reject(new Error('Không lấy được vị trí. Vui lòng bật GPS và thử lại.')),
+            { timeout: 10000, maximumAge: 0, enableHighAccuracy: true }
+        )
+    })
 }
