@@ -53,10 +53,7 @@
                             <th>Chi phí</th>
                             <th>Lợi nhuận</th>
                             <th>Lương</th>
-                            <th> Tạm ứng</th>
-                            <th> Hoàn ứng</th>
-                            <th> Còn lại</th>
-                            <th>Ảnh HĐ</th>
+                            <th>Chi tiết</th>
                         </tr>
                     </thead>
                     <tbody id="report-body">
@@ -111,9 +108,6 @@
                     const doanhThu = toNumber(trip.doanh_thu)
                     const chiPhi = toNumber(trip.chi_phi)
                     const loiNhuan = doanhThu - chiPhi
-                    const tamUng = toNumber(trip.tam_ung)
-                    const hoanUng = toNumber(trip.hoan_ung)
-                    const conLai = tamUng - hoanUng
 
                     const values = [
                         formatDate(trip.ngay_bat_dau),
@@ -121,10 +115,7 @@
                         formatMoney(doanhThu),
                         formatMoney(chiPhi),
                         formatMoney(loiNhuan),
-                        formatMoney(toNumber(trip.luong_chuyen)),
-                        formatMoney(tamUng),
-                        formatMoney(hoanUng),
-                        formatMoney(conLai)
+                        formatMoney(toNumber(trip.luong_chuyen))
                     ]
 
                     values.forEach((value, index) => {
@@ -133,33 +124,16 @@
                         if (index === 2) cell.style.color = '#2ecc71'
                         if (index === 3) cell.style.color = '#e74c3c'
                         if (index === 4) cell.style.color = '#3498db'
-                        if (index === 6) cell.style.color = '#e67e22'
-                        if (index === 7) cell.style.color = '#27ae60'
-                        if (index === 8) cell.style.color = conLai > 0 ? '#e74c3c' : '#27ae60'
                         row.appendChild(cell)
                     })
 
-                    const imgCell = document.createElement('td')
-                    if (trip.anh_hoa_don) {
-                        const link = document.createElement('a')
-                        link.href = trip.anh_hoa_don
-                        link.target = '_blank'
-                        const img = document.createElement('img')
-                        img.src = trip.anh_hoa_don
-                        img.width = 50
-                        img.height = 50
-                        img.style.objectFit = 'cover'
-                        img.style.borderRadius = '4px'
-                        img.style.border = '1px solid #e0e0e0'
-                        img.style.cursor = 'pointer'
-                        link.appendChild(img)
-                        imgCell.appendChild(link)
-                    } else {
-                        imgCell.textContent = '-'
-                        imgCell.style.color = '#aaa'
-                        imgCell.style.textAlign = 'center'
-                    }
-                    row.appendChild(imgCell)
+                    const detailCell = document.createElement('td')
+                    const detailBtn = document.createElement('button')
+                    detailBtn.className = 'btn btn-sm'
+                    detailBtn.textContent = 'Chi tiết'
+                    detailBtn.onclick = () => window.location.href = 'trip-detail.html?id=' + trip.id
+                    detailCell.appendChild(detailBtn)
+                    row.appendChild(detailCell)
 
                     tbody.appendChild(row)
                 })
