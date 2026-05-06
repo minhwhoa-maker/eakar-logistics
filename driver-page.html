@@ -216,10 +216,13 @@
         const tuyen_duong = document.getElementById('new-trip-tuyen').value.trim()
         const ghi_chu = document.getElementById('new-trip-ghi-chu').value.trim()
         if (!tuyen_duong) { showToast('Vui lòng nhập tuyến đường', 'error'); return }
+        const form = document.querySelector('[data-form-id="new-trip"]')
+        const btn = form.querySelector('.btn')
+        btn.disabled = true
         showToast('Đang lấy vị trí GPS...')
         let loc
         try { loc = await getLocation() }
-        catch (e) { showToast(e.message, 'error'); return }
+        catch (e) { showToast(e.message, 'error'); btn.disabled = false; return }
         const { error } = await sb.from('trips').insert({
             tuyen_duong, ghi_chu: ghi_chu || null,
             doanh_thu: 0, chi_phi: 0,
@@ -228,6 +231,7 @@
             tai_xe_id: currentProfileId,
             lat_bat_dau: loc.lat, lng_bat_dau: loc.lng
         })
+        btn.disabled = false
         if (error) { showToast('Lỗi: ' + error.message, 'error'); return }
         document.getElementById('new-trip-tuyen').value = ''
         document.getElementById('new-trip-ghi-chu').value = ''
@@ -661,16 +665,19 @@
         const luong_chuyen = Number(form.querySelector('[data-field="luong_chuyen"]').value) || 0
         const tam_ung      = Number(form.querySelector('[data-field="tam_ung"]').value) || 0
         const hoan_ung     = Number(form.querySelector('[data-field="hoan_ung"]').value) || 0
+        const btn = form.querySelector('.btn-success')
+        btn.disabled = true
         showToast('Đang lấy vị trí GPS...')
         let loc
         try { loc = await getLocation() }
-        catch (e) { showToast(e.message, 'error'); return }
+        catch (e) { showToast(e.message, 'error'); btn.disabled = false; return }
         const { error } = await sb.from('trips').update({
             trang_thai: 'hoan_thanh',
             ngay_ket_thuc: new Date().toISOString(),
             doanh_thu, luong_chuyen, tam_ung, hoan_ung,
             lat_ket_thuc: loc.lat, lng_ket_thuc: loc.lng
         }).eq('id', tripId)
+        btn.disabled = false
         if (error) { showToast('Lỗi: ' + error.message, 'error'); return }
         closeActiveForm()
         showToast('Hoàn thành chuyến', 'success')

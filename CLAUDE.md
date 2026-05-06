@@ -125,7 +125,12 @@ const loai = form.querySelector('[data-field="loai"]').value
 
 **Chi phí reload** — sau mỗi insert/update/delete `chi_phi_chuyen`, gọi `reloadTripChiPhi(tripId)` để fetch `trips.chi_phi` mới nhất từ DB (DB trigger tự sync).
 
-**GPS bắt buộc khi thêm chi phí** — `submitAddExpense` gọi `getLocation()` trước upload. Thứ tự: validate → GPS (disable button, fail → re-enable + return) → upload ảnh → insert với `lat/lng`. Nếu GPS fail, upload không chạy.
+**GPS bắt buộc cho 3 thao tác**:
+- **Tạo chuyến** (`submitNewTrip`): validate → GPS (fail → return) → insert với `lat_bat_dau/lng_bat_dau`.
+- **Hoàn thành chuyến** (`submitComplete`): validate doanh_thu → GPS (fail → return) → update với `lat_ket_thuc/lng_ket_thuc`.
+- **Thêm chi phí** (`submitAddExpense`): validate → GPS (disable button, fail → re-enable + return) → upload ảnh → insert với `lat/lng`. Nếu GPS fail, upload không chạy.
+
+Tất cả 3 thao tác đều hiện toast "Đang lấy vị trí GPS..." trước khi gọi `getLocation()`.
 
 ## Database
 
@@ -173,6 +178,7 @@ bao_duong      (id, xe_id, ngay, loai, mo_ta, chi_phi, created_at)     -- loai: 
 
 ## Recent changes log
 
+- Bài 33 (2026-05-06): Mở rộng GPS tracking — `submitNewTrip` lưu `lat_bat_dau/lng_bat_dau` khi tạo chuyến, `submitComplete` lưu `lat_ket_thuc/lng_ket_thuc` khi hoàn thành chuyến. Hoàn thiện GPS toàn bộ trip lifecycle (tạo → chi phí → hoàn thành).
 - Bài 32 (2026-05-05): GPS tracking — thêm `getLocation()` vào `shared.js`. `submitAddExpense` trong `driver-page.html` bắt buộc lấy GPS trước upload, lưu `lat/lng` vào `chi_phi_chuyen`. Thêm cột GPS vào schema `trips` và `chi_phi_chuyen`. Tạo `trip-detail.html` — trang shared driver/owner xem chi tiết chuyến, driver có thể edit chi phí inline khi dang_chay. `owner-dashboard.html`: bỏ cột Tạm ứng/Hoàn ứng/Còn lại/Ảnh HĐ, thêm cột Chi tiết link đến `trip-detail.html`. `driver-page.html`: confirm modal trước khi hoàn thành chuyến, nút "Thêm chi phí" full-width symmetric. Xóa dead code `formatDate` đầu tiên trong `shared.js`.
 - Bài 31 (2026-05-05): Refactor `driver-page.html` — multi-expense trip tracking. 2 tab Đang chạy/Hoàn thành, tạo chuyến mới, thêm/sửa/xóa chi phí per trip, xác nhận hoàn thành với doanh thu thực tế. Thêm bảng `chi_phi_chuyen`. Đổi `ngay` → `ngay_bat_dau` (timestamptz) trên `trips`, thêm `trang_thai`/`ngay_ket_thuc`. Update `formatDate()` xuất `HH:MM - DD/MM/YY`. Fix filter tháng dùng timestamptz trong `owner-dashboard.html` và `driver.html`.
 - Bài 30 (2026-05-03): Thay toàn bộ `alert()` bằng `showToast()` trong 4 page. Refactor `driver-page.html` — bỏ `showMsg()`/`#msg` div, thêm `resetForm()`.
