@@ -109,11 +109,18 @@ let totalsData = {}    // { tong_doanh_thu, tong_chi_phi, tong_loi_nhuan, tong_l
 
 `saveChatContext(trips, dt, cp, luong)` được gọi cuối `loadTrips()` sau `renderTrips()` để cập nhật snapshot. Chatbot đọc `tripsData`/`totalsData` khi build system prompt — không fetch DB riêng.
 
-`sendMessage()` POST lên `/api/chat` (Vercel serverless proxy). Model: `claude-sonnet-4-20250514`.
+`sendMessage()` POST lên `/api/chat` và đọc SSE stream (streaming mode). Flow:
+1. Tạo `botBubble` với `appendBubble('assistant', '...')` — hàm này trả về element để update dần.
+2. Khi stream đến, parse từng SSE line: chỉ xử lý `json.type === 'content_block_delta'` với `json.delta.type === 'text_delta'`; append `json.delta.text` vào `botBubble.textContent`.
+3. Sau khi `reader` báo `done`, push `fullText` vào `messages` array để giữ multi-turn context.
+
+`appendBubble(role, text)` tạo `.chat-bubble` element, append vào `#chat-messages`, scroll xuống và **trả về element** (quan trọng để streaming update).
 
 ### api/chat.js — Vercel serverless proxy
 
-`api/chat.js` nhận POST, forward thẳng body lên `https://api.anthropic.com/v1/messages` với `x-api-key` từ `process.env.ANTHROPIC_API_KEY`. Cần set env var này trong Vercel Dashboard → Project Settings → Environment Variables. Không có key → API trả 401.
+`api/chat.js` nhận POST, inject `stream: true` vào body rồi forward lên `https://api.anthropic.com/v1/messages` với `x-api-key` từ `process.env.ANTHROPIC_API_KEY`. Cần set env var này trong Vercel Dashboard → Project Settings → Environment Variables. Không có key → API trả 401.
+
+Nếu upstream không OK (4xx/5xx), trả JSON error về client. Nếu OK, set header `Content-Type: text/event-stream` và pipe response về client dùng `for await...of upstream.body` (Node.js 18+ Web ReadableStream iterator).
 
 ### Realtime subscriptions
 `owner-dashboard.html` subscribe channel `trips-changes` cho table `trips`. Channel được lưu trong `tripsChannel` và cleanup ở `beforeunload` qua `sb.removeChannel(tripsChannel)`.
@@ -196,6 +203,7 @@ bao_duong      (id, xe_id, ngay, loai, mo_ta, chi_phi, created_at)     -- loai: 
 
 ## Recent changes log
 
+- Bài 36 (2026-05-07): Streaming chatbot — `api/chat.js` inject `stream: true`, check `upstream.ok`, pipe SSE qua `for await...of` (thay `WritableStream` không tồn tại trong Node runtime). `owner-dashboard.html`: `sendMessage` đọc SSE stream thay vì `response.json()`, parse `content_block_delta`/`text_delta` events, tích lũy `fullText` rồi push vào `messages` sau khi xong. `appendBubble` trả về element để update dần.
 - Bài 35 (2026-05-07): Fix chatbot `owner-dashboard.html` — sửa `chat-header` HTML dùng đúng `.chat-header-avatar`/`.chat-header-info`/`.name`/`.status` để khớp CSS. Tạo `api/chat.js` Vercel serverless proxy thay cho direct browser call; xóa `ANTHROPIC_API_KEY` const khỏi client-side. FAB ẩn khi chat panel mở.
 - Bài 34 (2026-05-06): AI chatbot trong `owner-dashboard.html` — floating FAB + chat panel, gọi Anthropic API với context trips. State: `tripsData`/`totalsData` được cập nhật qua `saveChatContext()` cuối mỗi `loadTrips()`. CSS chatbot thêm vào `style.css`.
 - Bài 33 (2026-05-06): Mở rộng GPS tracking — `submitNewTrip` lưu `lat_bat_dau/lng_bat_dau` khi tạo chuyến, `submitComplete` lưu `lat_ket_thuc/lng_ket_thuc` khi hoàn thành chuyến. Hoàn thiện GPS toàn bộ trip lifecycle (tạo → chi phí → hoàn thành).
