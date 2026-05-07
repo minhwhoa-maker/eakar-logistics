@@ -213,7 +213,7 @@
             })
 
             // ── Chatbot state ──────────────────────────────────────
-            const ANTHROPIC_API_KEY = "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"
+            const ANTHROPIC_API_KEY = ""
             let chatOpen = false
             let messages = []
             let tripsData = []
@@ -278,9 +278,9 @@
                 const systemPrompt = `Mày là trợ lý phân tích vận tải cho chủ xe. Trả lời ngắn gọn, súc tích bằng tiếng Việt. Dữ liệu hiện tại: ${JSON.stringify(context)}`
 
                 try {
-                    const res = await fetch('https://api.anthropic.com/v1/messages', {
+                    const res = await fetch('/api/chat', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+                        headers: { 'Content-Type': 'application/json'},
                         body: JSON.stringify({
                             model: 'claude-sonnet-4-20250514',
                             max_tokens: 1000,
