@@ -27,14 +27,14 @@ Không có build step, không có test runner, không có lint. Quy trình:
 
 ### Page roles
 - `bai10.html` — landing page + Google OAuth + role redirect. Có `<style>` block riêng (~220 dòng) cho hero/stats/features layout (KHÔNG dùng `.card` chuẩn).
-- `owner-dashboard.html` — owner xem báo cáo trips, filter tháng, realtime subscribe `trips`. Header có nav đến driver/vehicles. Bảng trips có cột "Chi tiết" link đến `trip-detail.html`. Có floating AI chatbot (nút FAB góc phải) gọi Anthropic API trực tiếp từ browser với context trips hiện tại.
+- `owner-dashboard.html` — owner xem báo cáo trips, filter tháng, realtime subscribe `trips`. Header có nav đến driver/vehicles. Bảng trips có cột "Chi tiết" link đến `trip-detail.html`. Có floating AI chatbot (nút FAB góc phải) gọi qua `/api/chat` Vercel proxy với context trips hiện tại.
 - `trip-detail.html` — trang shared cho cả driver và owner xem chi tiết 1 chuyến. Auth dùng `getSession() + getUserProfile()` (không dùng `requireRole`). Driver chỉ xem được trip của mình; owner xem được tất cả. Driver + dang_chay: có thể thêm/sửa/xóa chi phí inline. Hiển thị GPS links nếu có tọa độ.
 - `driver-page.html` — driver quản lý chuyến theo flow mới: 2 tab ("Đang chạy" / "Hoàn thành"), tạo chuyến → thêm nhiều chi phí phát sinh (có GPS bắt buộc) → xác nhận hoàn thành (có confirm modal).
 - `driver.html` — owner quản lý tài xế, tính lương theo tháng, export Excel/PDF.
 - `vehicles.html` — owner quản lý xe + bảo dưỡng inline.
 - `style.css` — design system shared, dùng CSS variables.
 - `shared.js` — JS utilities shared (xem dưới).
-- `sw.js` + `manifest.json` — PWA, chỉ register từ `bai10.html`.
+- `sw.js` + `manifest.json` — PWA, chỉ register từ `bai10.html`. Khi deploy thay đổi cho các file được cache (bai10, style.css, manifest, icons), phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v4`) để invalidate cache cũ.
 
 ### shared.js (BẮT BUỘC dùng cho mọi page mới)
 ```
@@ -109,7 +109,11 @@ let totalsData = {}    // { tong_doanh_thu, tong_chi_phi, tong_loi_nhuan, tong_l
 
 `saveChatContext(trips, dt, cp, luong)` được gọi cuối `loadTrips()` sau `renderTrips()` để cập nhật snapshot. Chatbot đọc `tripsData`/`totalsData` khi build system prompt — không fetch DB riêng.
 
-API call dùng `ANTHROPIC_API_KEY` (const ở đầu chatbot state block trong `<script>`). Bắt buộc truyền header `'anthropic-dangerous-direct-browser-access': 'true'` khi gọi API từ browser. Model: `claude-sonnet-4-20250514`.
+`sendMessage()` POST lên `/api/chat` (Vercel serverless proxy). Model: `claude-sonnet-4-20250514`.
+
+### api/chat.js — Vercel serverless proxy
+
+`api/chat.js` nhận POST, forward thẳng body lên `https://api.anthropic.com/v1/messages` với `x-api-key` từ `process.env.ANTHROPIC_API_KEY`. Cần set env var này trong Vercel Dashboard → Project Settings → Environment Variables. Không có key → API trả 401.
 
 ### Realtime subscriptions
 `owner-dashboard.html` subscribe channel `trips-changes` cho table `trips`. Channel được lưu trong `tripsChannel` và cleanup ở `beforeunload` qua `sb.removeChannel(tripsChannel)`.
@@ -192,7 +196,8 @@ bao_duong      (id, xe_id, ngay, loai, mo_ta, chi_phi, created_at)     -- loai: 
 
 ## Recent changes log
 
-- Bài 34 (2026-05-06): AI chatbot trong `owner-dashboard.html` — floating FAB + chat panel, gọi Anthropic API trực tiếp từ browser với context trips. State: `tripsData`/`totalsData` được cập nhật qua `saveChatContext()` cuối mỗi `loadTrips()`. CSS chatbot thêm vào `style.css`.
+- Bài 35 (2026-05-07): Fix chatbot `owner-dashboard.html` — sửa `chat-header` HTML dùng đúng `.chat-header-avatar`/`.chat-header-info`/`.name`/`.status` để khớp CSS. Tạo `api/chat.js` Vercel serverless proxy thay cho direct browser call; xóa `ANTHROPIC_API_KEY` const khỏi client-side. FAB ẩn khi chat panel mở.
+- Bài 34 (2026-05-06): AI chatbot trong `owner-dashboard.html` — floating FAB + chat panel, gọi Anthropic API với context trips. State: `tripsData`/`totalsData` được cập nhật qua `saveChatContext()` cuối mỗi `loadTrips()`. CSS chatbot thêm vào `style.css`.
 - Bài 33 (2026-05-06): Mở rộng GPS tracking — `submitNewTrip` lưu `lat_bat_dau/lng_bat_dau` khi tạo chuyến, `submitComplete` lưu `lat_ket_thuc/lng_ket_thuc` khi hoàn thành chuyến. Hoàn thiện GPS toàn bộ trip lifecycle (tạo → chi phí → hoàn thành).
 - Bài 32 (2026-05-05): GPS tracking — thêm `getLocation()` vào `shared.js`. `submitAddExpense` trong `driver-page.html` bắt buộc lấy GPS trước upload, lưu `lat/lng` vào `chi_phi_chuyen`. Thêm cột GPS vào schema `trips` và `chi_phi_chuyen`. Tạo `trip-detail.html` — trang shared driver/owner xem chi tiết chuyến, driver có thể edit chi phí inline khi dang_chay. `owner-dashboard.html`: bỏ cột Tạm ứng/Hoàn ứng/Còn lại/Ảnh HĐ, thêm cột Chi tiết link đến `trip-detail.html`. `driver-page.html`: confirm modal trước khi hoàn thành chuyến, nút "Thêm chi phí" full-width symmetric. Xóa dead code `formatDate` đầu tiên trong `shared.js`.
 - Bài 31 (2026-05-05): Refactor `driver-page.html` — multi-expense trip tracking. 2 tab Đang chạy/Hoàn thành, tạo chuyến mới, thêm/sửa/xóa chi phí per trip, xác nhận hoàn thành với doanh thu thực tế. Thêm bảng `chi_phi_chuyen`. Đổi `ngay` → `ngay_bat_dau` (timestamptz) trên `trips`, thêm `trang_thai`/`ngay_ket_thuc`. Update `formatDate()` xuất `HH:MM - DD/MM/YY`. Fix filter tháng dùng timestamptz trong `owner-dashboard.html` và `driver.html`.
