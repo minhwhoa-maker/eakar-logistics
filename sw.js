@@ -25,18 +25,26 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('push', e => {
     const data = e.data?.json() || {}
-    e.waitUntil(
-        self.registration.showNotification(data.title || 'Thông báo', {
-            body: data.body || '',
-            icon: './icons/icon-192.png',
-            badge: './icons/icon-192.png'
-        })
-    )
+    const title = data.title || 'Van Tải App'
+    const options = {
+        body: data.body || '',
+        icon: data.icon || '/icons/icon-192.png',
+        badge: '/icons/icon-192.png',
+        data: { url: data.url || '/owner-dashboard.html' }
+    }
+    e.waitUntil(self.registration.showNotification(title, options))
 })
 
 self.addEventListener('notificationclick', e => {
     e.notification.close()
-    e.waitUntil(clients.openWindow('./owner-dashboard.html'))
+    const url = e.notification.data?.url || '/owner-dashboard.html'
+    e.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+            const match = list.find(c => c.url === url)
+            if (match) return match.focus()
+            return clients.openWindow(url)
+        })
+    )
 })
 
 self.addEventListener('fetch', e => {
