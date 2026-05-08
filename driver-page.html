@@ -444,6 +444,7 @@
         form.querySelector('[data-field="so_tien"]').value = ''
         form.querySelector('[data-field="mo_ta"]').value = ''
         closeActiveForm()
+        btnSave.disabled = false
         showToast('Đã thêm chi phí', 'success')
         notifyOwner('expense', { driver_name: currentDriverName, so_tien: formatMoney(so_tien) })
         await reloadTripChiPhi(tripId)
