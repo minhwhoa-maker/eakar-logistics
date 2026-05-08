@@ -160,7 +160,10 @@
                 const totalDT = trips.reduce((sum, c) => sum + toNumber(c.doanh_thu), 0)
                 const totalCP = trips.reduce((sum, c) => sum + toNumber(c.chi_phi), 0)
                 const totalluong = trips.reduce((sum, c) => sum + toNumber(c.luong_chuyen), 0)
-                
+
+                const { data: drivers } = await sb.from('users').select('id, full_name').eq('role', 'driver')
+                const driverMap = {}
+                if (Array.isArray(drivers)) drivers.forEach(d => { driverMap[d.id] = d.full_name })
 
                 setTotals(totalDT, totalCP, totalluong)
 
@@ -172,7 +175,7 @@
 
                 hideStatus()
                 renderTrips(trips)
-                saveChatContext(trips, totalDT, totalCP, totalluong)
+                saveChatContext(trips, totalDT, totalCP, totalluong, driverMap)
             }
 
             function clearFilter() {
@@ -217,9 +220,11 @@
             let messages = []
             let tripsData = []
             let totalsData = {}
+            let driverMapData = {}
 
-            function saveChatContext(trips, dt, cp, luong) {
+            function saveChatContext(trips, dt, cp, luong, driverMap) {
                 tripsData = trips
+                driverMapData = driverMap || {}
                 totalsData = { tong_doanh_thu: dt, tong_chi_phi: cp, tong_loi_nhuan: dt - cp, tong_luong: luong }
             }
 
@@ -264,6 +269,7 @@
                     danh_sach_chuyen: tripsData.map(t => ({
                         ngay: t.ngay_bat_dau,
                         tuyen: t.tuyen_duong,
+                        tai_xe: driverMapData[t.tai_xe_id] || t.tai_xe_id,
                         doanh_thu: t.doanh_thu,
                         chi_phi: t.chi_phi,
                         loi_nhuan: toNumber(t.doanh_thu) - toNumber(t.chi_phi),
