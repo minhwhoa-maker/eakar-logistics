@@ -12,3 +12,9 @@ Keep these backup codes somewhere safe but accessible.
 * You can only use each backup code once.
 * Need more? Visit https://g.co/2sv
 * These codes were generated on: Apr 24, 2026.
+
+Public Key:
+BJO2an5FL6G-ROpD5_krG8QteQJW2aiTNR-GDEhAh4mMC1rX10gDmMDjaXpUcHTsgAQpzZNVdVUdpwE2XvVr070
+
+Private Key:
+3nSjc1lGXC4F1NDfhQGhudb1fs3RH1S9Ua-7K1JE1hA

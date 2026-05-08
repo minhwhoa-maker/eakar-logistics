@@ -23,6 +23,22 @@ self.addEventListener('activate', e => {
     );
 });
 
+self.addEventListener('push', e => {
+    const data = e.data?.json() || {}
+    e.waitUntil(
+        self.registration.showNotification(data.title || 'Thông báo', {
+            body: data.body || '',
+            icon: './icons/icon-192.png',
+            badge: './icons/icon-192.png'
+        })
+    )
+})
+
+self.addEventListener('notificationclick', e => {
+    e.notification.close()
+    e.waitUntil(clients.openWindow('./owner-dashboard.html'))
+})
+
 self.addEventListener('fetch', e => {
     if (e.request.method !== 'GET') return;
 

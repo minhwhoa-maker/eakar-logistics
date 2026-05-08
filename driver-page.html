@@ -74,6 +74,8 @@
     const sb = createSb()
     let currentUser = null
     let currentProfileId = null
+    let currentDriverName = ''
+    let currentOwnerId = null
     let activeFormId = null
     let activeReceiptFile = null
 
@@ -211,6 +213,15 @@
         return group
     }
 
+    function notifyOwner(type, payload) {
+        if (!currentOwnerId) return
+        fetch('/api/notify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ owner_id: currentOwnerId, type, payload })
+        }).catch(() => {})
+    }
+
     // ── New Trip ──────────────────────────────────────────────────────
     async function submitNewTrip() {
         const tuyen_duong = document.getElementById('new-trip-tuyen').value.trim()
@@ -237,6 +248,7 @@
         document.getElementById('new-trip-ghi-chu').value = ''
         closeActiveForm()
         showToast('Tạo chuyến thành công', 'success')
+        notifyOwner('new_trip', { driver_name: currentDriverName, tuyen_duong })
         loadActiveTrips()
     }
 
@@ -264,6 +276,7 @@
         const card = document.createElement('div')
         card.className = 'card'
         card.dataset.tripId = trip.id
+        card.dataset.tuyenDuong = trip.tuyen_duong || ''
 
         const title = document.createElement('div')
         title.style.cssText = 'font-weight:700;font-size:1.05em;margin-bottom:4px'
@@ -432,6 +445,7 @@
         form.querySelector('[data-field="mo_ta"]').value = ''
         closeActiveForm()
         showToast('Đã thêm chi phí', 'success')
+        notifyOwner('expense', { driver_name: currentDriverName, so_tien: formatMoney(so_tien) })
         await reloadTripChiPhi(tripId)
         await loadExpenses(tripId)
     }
@@ -690,6 +704,8 @@
         if (error) { showToast('Lỗi: ' + error.message, 'error'); return }
         closeActiveForm()
         showToast('Hoàn thành chuyến', 'success')
+        const tripCard = document.querySelector(`[data-trip-id="${tripId}"]`)
+        notifyOwner('complete', { driver_name: currentDriverName, tuyen_duong: tripCard?.dataset.tuyenDuong || '' })
         loadActiveTrips()
     }
 
@@ -755,6 +771,10 @@
         if (!auth) return
         currentUser = auth.user
         currentProfileId = auth.profile.id
+        const { data: u } = await sb.from('users').select('full_name').eq('id', currentProfileId).single()
+        currentDriverName = u?.full_name || currentUser.email
+        const { data: owner } = await sb.from('users').select('id').eq('role', 'owner').single()
+        currentOwnerId = owner?.id || null
         loadActiveTrips()
     }
 

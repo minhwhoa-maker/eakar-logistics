@@ -62,6 +62,31 @@
                 </table>
             </div>
             <div id="status-message" hidden></div>
+
+            <div class="card" style="margin-top:16px">
+                <h3 style="margin-bottom:12px;font-size:1em;color:var(--text)">🔔 Cài đặt thông báo</h3>
+                <div class="notify-row">
+                    <span>🚛 Chuyến mới bắt đầu</span>
+                    <label class="toggle">
+                        <input type="checkbox" id="notif-new-trip" onchange="saveNotifySetting('new_trip', this.checked)">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="notify-row">
+                    <span>✅ Chuyến hoàn thành</span>
+                    <label class="toggle">
+                        <input type="checkbox" id="notif-complete" onchange="saveNotifySetting('complete', this.checked)">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="notify-row">
+                    <span>💰 Chi phí mới</span>
+                    <label class="toggle">
+                        <input type="checkbox" id="notif-expense" onchange="saveNotifySetting('expense', this.checked)">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
         </div>
         <script>
             function showToast(msg, type = '') {
@@ -73,6 +98,53 @@
             const sb = createSb()
             const statusMessage = document.getElementById('status-message')
             let tripsChannel = null
+            let currentOwnerProfileId = null
+
+            const VAPID_PUBLIC_KEY = 'BJO2an5FL6G-ROpD5_krG8QteQJW2aiTNR-GDEhAh4mMC1rX10gDmMDjaXpUcHTsgAQpzZNVdVUdpwE2XvVr070'
+
+            function urlBase64ToUint8Array(b64) {
+                const padding = '='.repeat((4 - b64.length % 4) % 4)
+                const base64 = (b64 + padding).replace(/-/g, '+').replace(/_/g, '/')
+                const raw = atob(base64)
+                return Uint8Array.from([...raw].map(c => c.charCodeAt(0)))
+            }
+
+            async function setupPushNotifications(userId) {
+                if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+                try {
+                    const reg = await navigator.serviceWorker.ready
+                    const permission = await Notification.requestPermission()
+                    if (permission !== 'granted') return
+                    const existing = await reg.pushManager.getSubscription()
+                    const sub = existing || await reg.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+                    })
+                    await fetch('/api/subscribe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ user_id: userId, subscription: sub.toJSON() })
+                    })
+                } catch (e) {
+                    console.error('Push setup error:', e)
+                }
+            }
+
+            async function loadNotifySettings() {
+                const { data } = await sb
+                    .from('notify_settings')
+                    .select('new_trip, complete, expense')
+                    .eq('owner_id', currentOwnerProfileId)
+                    .single()
+                document.getElementById('notif-new-trip').checked  = data ? data.new_trip  : true
+                document.getElementById('notif-complete').checked   = data ? data.complete   : true
+                document.getElementById('notif-expense').checked    = data ? data.expense    : true
+            }
+
+            async function saveNotifySetting(key, value) {
+                await sb.from('notify_settings')
+                    .upsert({ owner_id: currentOwnerProfileId, [key]: value }, { onConflict: 'owner_id' })
+            }
 
             function toNumber(value) {
                 const n = Number(value)
@@ -189,6 +261,9 @@
                     hideStatus()
                     const auth = await requireRole(sb, 'owner')
                     if (!auth) return
+                    currentOwnerProfileId = auth.profile.id
+                    setupPushNotifications(currentOwnerProfileId)
+                    loadNotifySettings()
                     await loadTrips()
                     tripsChannel = sb.channel('trips-changes')
                         .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, payload => {

@@ -105,9 +105,10 @@ let chatOpen = false
 let messages = []      // conversation history gửi lên API
 let tripsData = []     // snapshot trips từ lần loadTrips() gần nhất
 let totalsData = {}    // { tong_doanh_thu, tong_chi_phi, tong_loi_nhuan, tong_luong }
+let driverMapData = {} // { [users.id]: full_name } — build từ users table mỗi loadTrips()
 ```
 
-`saveChatContext(trips, dt, cp, luong)` được gọi cuối `loadTrips()` sau `renderTrips()` để cập nhật snapshot. Chatbot đọc `tripsData`/`totalsData` khi build system prompt — không fetch DB riêng.
+`saveChatContext(trips, dt, cp, luong, driverMap)` được gọi cuối `loadTrips()` sau `renderTrips()` để cập nhật snapshot. `loadTrips()` fetch thêm `users` table để build `driverMap` trước khi gọi. Chatbot đọc `tripsData`/`totalsData`/`driverMapData` khi build system prompt — không fetch DB riêng. Context mapping dùng `tai_xe: driverMapData[t.tai_xe_id] || t.tai_xe_id` để gửi tên thay UUID.
 
 `sendMessage()` POST lên `/api/chat` và đọc SSE stream (streaming mode). Flow:
 1. Tạo `botBubble` với `appendBubble('assistant', '...')` — hàm này trả về element để update dần.
@@ -203,6 +204,7 @@ bao_duong      (id, xe_id, ngay, loai, mo_ta, chi_phi, created_at)     -- loai: 
 
 ## Recent changes log
 
+- Bài 37 (2026-05-08): Fix chatbot context thiếu tên tài xế — `loadTrips()` fetch thêm `users` table build `driverMap { id: full_name }`. `saveChatContext()` nhận thêm param `driverMap`, lưu vào global `driverMapData`. Context mapping thêm `tai_xe: driverMapData[t.tai_xe_id] || t.tai_xe_id` thay vì UUID.
 - Bài 36 (2026-05-07): Streaming chatbot — `api/chat.js` inject `stream: true`, check `upstream.ok`, pipe SSE qua `for await...of` (thay `WritableStream` không tồn tại trong Node runtime). `owner-dashboard.html`: `sendMessage` đọc SSE stream thay vì `response.json()`, parse `content_block_delta`/`text_delta` events, tích lũy `fullText` rồi push vào `messages` sau khi xong. `appendBubble` trả về element để update dần.
 - Bài 35 (2026-05-07): Fix chatbot `owner-dashboard.html` — sửa `chat-header` HTML dùng đúng `.chat-header-avatar`/`.chat-header-info`/`.name`/`.status` để khớp CSS. Tạo `api/chat.js` Vercel serverless proxy thay cho direct browser call; xóa `ANTHROPIC_API_KEY` const khỏi client-side. FAB ẩn khi chat panel mở.
 - Bài 34 (2026-05-06): AI chatbot trong `owner-dashboard.html` — floating FAB + chat panel, gọi Anthropic API với context trips. State: `tripsData`/`totalsData` được cập nhật qua `saveChatContext()` cuối mỗi `loadTrips()`. CSS chatbot thêm vào `style.css`.
