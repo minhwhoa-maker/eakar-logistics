@@ -98,72 +98,13 @@ function showToast(msg, type = '') {
 - Error → `showToast('...', 'error')`, success → `showToast('...', 'success')`, neutral → `showToast('...')`
 - **Ngoại lệ**: `owner-dashboard.html` dùng thêm `showStatus()` (`.message.success/.error/.empty`) cho status area tĩnh trong table container; `driver.html` dùng `#add-msg` element riêng cho "Thêm tài xế thành công" (không phải toast).
 
-### owner-dashboard.html — AI chatbot
-
-State globals:
-```js
-let chatOpen = false
-let messages = []      // conversation history gửi lên API
-let tripsData = []     // snapshot trips từ lần loadTrips() gần nhất
-let totalsData = {}    // { tong_doanh_thu, tong_chi_phi, tong_loi_nhuan, tong_luong }
-let driverMapData = {} // { [users.id]: full_name } — build từ users table mỗi loadTrips()
-```
-
-`saveChatContext(trips, dt, cp, luong, driverMap)` được gọi cuối `loadTrips()` sau `renderTrips()` để cập nhật snapshot. `loadTrips()` fetch thêm `users` table để build `driverMap` trước khi gọi. Chatbot đọc `tripsData`/`totalsData`/`driverMapData` khi build system prompt — không fetch DB riêng. Context mapping dùng `tai_xe: driverMapData[t.tai_xe_id] || t.tai_xe_id` để gửi tên thay UUID.
-
-`sendMessage()` POST lên `/api/chat` và đọc SSE stream (streaming mode). Flow:
-1. Tạo `botBubble` với `appendBubble('assistant', '...')` — hàm này trả về element để update dần.
-2. Khi stream đến, parse từng SSE line: chỉ xử lý `json.type === 'content_block_delta'` với `json.delta.type === 'text_delta'`; append `json.delta.text` vào `botBubble.textContent`.
-3. Sau khi `reader` báo `done`, push `fullText` vào `messages` array để giữ multi-turn context.
-
-`appendBubble(role, text)` tạo `.chat-bubble` element, append vào `#chat-messages`, scroll xuống và **trả về element** (quan trọng để streaming update).
-
 ### api/ — Vercel serverless functions
 
-**`api/chat.js`** — nhận POST, inject `stream: true` rồi forward lên `https://api.anthropic.com/v1/messages`. Env var: `ANTHROPIC_API_KEY`. Pipe SSE response về client qua `for await...of upstream.body`.
+Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"type": "module"`.
 
-**`api/subscribe.js`** — nhận POST `{ user_id, subscription }`, upsert vào `push_subscriptions` dùng service role client. Env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
-
-**`api/notify.js`** — nhận POST `{ owner_id, type, payload }`. Kiểm tra `notify_settings` (skip nếu type bị tắt), lấy subscription từ `push_subscriptions`, gửi push qua `web-push`. Tự xóa subscription nếu nhận HTTP 410 (expired). Env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`.
-
-`type` hợp lệ: `'new_trip'` | `'complete'` | `'expense'`. `package.json` khai báo `"type": "module"` + deps `web-push` + `@supabase/supabase-js` để Vercel cài khi deploy. Các file `api/*.js` dùng ESM (`import`/`export default`).
-
-### Realtime subscriptions
-`owner-dashboard.html` subscribe channel `trips-changes` cho table `trips`. Channel được lưu trong `tripsChannel` và cleanup ở `beforeunload` qua `sb.removeChannel(tripsChannel)`.
-
-### driver-page.html — patterns đặc thù
-
-Page dùng 2 biến state toàn cục:
-```js
-let activeFormId = null        // formId của form đang mở, null nếu không có
-let activeReceiptFile = null   // File ảnh đang được chọn trong form active
-```
-
-**Form management** — chỉ 1 form mở tại 1 thời điểm:
-- Mỗi form container có `data-form-id="<formId>"`.
-- formId scheme: `'new-trip'`, `'add-{tripId}'`, `'edit-{expenseId}'`, `'complete-{tripId}'`.
-- `openForm(formId)` — đóng form cũ, reset `activeReceiptFile`, mở form mới.
-- `closeActiveForm()` — đóng form hiện tại, reset cả `activeFormId` và `activeReceiptFile`.
-- Save/cancel handler: gọi `closeActiveForm()` sau khi xử lý xong.
-
-**Form inputs** — dùng `data-field` attribute thay vì ID để tránh conflict với nhiều card:
-```js
-const form = document.querySelector(`[data-form-id="add-${tripId}"]`)
-const loai = form.querySelector('[data-field="loai"]').value
-```
-
-**Upload group** — `buildUploadGroup(onRemove)` tạo block upload tái sử dụng. Preview image cần inline style (không có class CSS). Edit form dùng `wrap.dataset.photoRemoved = 'true'` khi user xóa ảnh.
-
-**Chi phí reload** — sau mỗi insert/update/delete `chi_phi_chuyen`, gọi `reloadTripChiPhi(tripId)` để fetch `trips.chi_phi` mới nhất từ DB (DB trigger tự sync).
-
-**Push notification** — `notifyOwner(type, payload)` là fire-and-forget helper: guard `currentOwnerId`, POST `/api/notify`, `.catch(() => {})`. Được gọi sau 3 thao tác: tạo chuyến (`new_trip`), thêm chi phí (`expense`), hoàn thành chuyến (`complete`). `currentOwnerId` và `currentDriverName` được fetch một lần trong `initPage()`.
-
-**GPS bắt buộc cho 3 thao tác**:
-- **Tạo chuyến** (`submitNewTrip`): validate → GPS (fail → return) → insert với `lat_bat_dau/lng_bat_dau`.
-- **Hoàn thành chuyến** (`submitComplete`): validate doanh_thu → GPS (fail → return) → update với `lat_ket_thuc/lng_ket_thuc`.
-- **Thêm chi phí** (`submitAddExpense`): validate → GPS (disable button, fail → re-enable + return) → upload ảnh → insert với `lat/lng`. Nếu GPS fail, upload không chạy.
-
-Tất cả 3 thao tác đều hiện toast "Đang lấy vị trí GPS..." trước khi gọi `getLocation()`.
+- **`api/chat.js`** — proxy SSE tới Anthropic API. Env: `ANTHROPIC_API_KEY`.
+- **`api/subscribe.js`** — POST `{ user_id, subscription }`, upsert vào `push_subscriptions`. Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
+- **`api/notify.js`** — POST `{ owner_id, type, payload }`. Check `notify_settings`, gửi push qua `web-push`, tự xóa subscription nếu 410. `type`: `'new_trip'` | `'complete'` | `'expense'`. Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`.
 
 ## Database
 
@@ -185,8 +126,8 @@ chi_phi_chuyen (id, trip_id, loai, mo_ta, so_tien, anh_url, created_at, lat, lng
 tam_ung_thang  (id, tai_xe_id, thang, so_tien, ghi_chu)                -- thang format: 'YYYY-MM'
 xe             (id, bien_so, loai_xe, nam_sx, trang_thai, tai_xe_id)   -- trang_thai: 'hoat_dong' | 'bao_duong' | 'tam_nghi'
 bao_duong      (id, xe_id, ngay, loai, mo_ta, chi_phi, created_at)     -- loai: 'hong_hoc' | 'linh_kien' | 'lop_xe' | 'dinh_ky'
-push_subscriptions (user_id uuid PK, subscription jsonb)               -- Web Push subscription object; upsert on conflict user_id
-notify_settings    (owner_id uuid PK, notify_new_trip bool, notify_complete bool, notify_expense bool)
+push_subscriptions (user_id uuid PK, subscription_json jsonb)          -- Web Push subscription object; upsert on conflict user_id
+notify_settings    (user_id uuid PK, notify_new_trip bool, notify_complete bool, notify_expense bool)
                                                                         -- NULL row = tất cả bật; chỉ cần upsert khi owner thay đổi
 ```
 
@@ -212,20 +153,3 @@ notify_settings    (owner_id uuid PK, notify_new_trip bool, notify_complete bool
 - **Currency**: luôn `đ` (chữ thường), KHÔNG dùng `₫` unicode.
 - **Google OAuth `redirectTo`**: dùng `window.location.origin + '/bai10.html'` để hoạt động cả local và production.
 
-## Recent changes log
-
-- Bài 39 (2026-05-08): Bugfixes — `driver-page.html`: thêm `btnSave.disabled = false` sau `closeActiveForm()` trong `submitAddExpense` (success path). `sw.js`: bump CACHE_NAME `van-tai-v4` → `van-tai-v5`. `package.json`: thêm `"type": "module"`, `name`, `version`. `api/notify.js`: fix column names `notify_settings` thành `notify_new_trip/notify_complete/notify_expense`, check `settings[\`notify_${type}\`]` thay vì `settings[type]`.
-- Bài 38 (2026-05-08): Web Push Notifications — `api/subscribe.js` (lưu subscription), `api/notify.js` (gửi push qua web-push, check notify_settings, xóa subscription 410). `sw.js`: push handler (showNotification với data.url) + notificationclick (focus tab cũ hoặc openWindow). `owner-dashboard.html`: `setupPushNotifications()` + `urlBase64ToUint8Array()` + notify settings card (3 toggle switches). `driver-page.html`: `notifyOwner()` helper, gọi sau tạo chuyến/thêm chi phí/hoàn thành. `package.json` thêm `web-push`. Vercel env vars cần thêm: `SUPABASE_SERVICE_KEY`, `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`.
-- Bài 37 (2026-05-08): Fix chatbot context thiếu tên tài xế — `loadTrips()` fetch thêm `users` table build `driverMap { id: full_name }`. `saveChatContext()` nhận thêm param `driverMap`, lưu vào global `driverMapData`. Context mapping thêm `tai_xe: driverMapData[t.tai_xe_id] || t.tai_xe_id` thay vì UUID.
-- Bài 36 (2026-05-07): Streaming chatbot — `api/chat.js` inject `stream: true`, check `upstream.ok`, pipe SSE qua `for await...of` (thay `WritableStream` không tồn tại trong Node runtime). `owner-dashboard.html`: `sendMessage` đọc SSE stream thay vì `response.json()`, parse `content_block_delta`/`text_delta` events, tích lũy `fullText` rồi push vào `messages` sau khi xong. `appendBubble` trả về element để update dần.
-- Bài 35 (2026-05-07): Fix chatbot `owner-dashboard.html` — sửa `chat-header` HTML dùng đúng `.chat-header-avatar`/`.chat-header-info`/`.name`/`.status` để khớp CSS. Tạo `api/chat.js` Vercel serverless proxy thay cho direct browser call; xóa `ANTHROPIC_API_KEY` const khỏi client-side. FAB ẩn khi chat panel mở.
-- Bài 34 (2026-05-06): AI chatbot trong `owner-dashboard.html` — floating FAB + chat panel, gọi Anthropic API với context trips. State: `tripsData`/`totalsData` được cập nhật qua `saveChatContext()` cuối mỗi `loadTrips()`. CSS chatbot thêm vào `style.css`.
-- Bài 33 (2026-05-06): Mở rộng GPS tracking — `submitNewTrip` lưu `lat_bat_dau/lng_bat_dau` khi tạo chuyến, `submitComplete` lưu `lat_ket_thuc/lng_ket_thuc` khi hoàn thành chuyến. Hoàn thiện GPS toàn bộ trip lifecycle (tạo → chi phí → hoàn thành).
-- Bài 32 (2026-05-05): GPS tracking — thêm `getLocation()` vào `shared.js`. `submitAddExpense` trong `driver-page.html` bắt buộc lấy GPS trước upload, lưu `lat/lng` vào `chi_phi_chuyen`. Thêm cột GPS vào schema `trips` và `chi_phi_chuyen`. Tạo `trip-detail.html` — trang shared driver/owner xem chi tiết chuyến, driver có thể edit chi phí inline khi dang_chay. `owner-dashboard.html`: bỏ cột Tạm ứng/Hoàn ứng/Còn lại/Ảnh HĐ, thêm cột Chi tiết link đến `trip-detail.html`. `driver-page.html`: confirm modal trước khi hoàn thành chuyến, nút "Thêm chi phí" full-width symmetric. Xóa dead code `formatDate` đầu tiên trong `shared.js`.
-- Bài 31 (2026-05-05): Refactor `driver-page.html` — multi-expense trip tracking. 2 tab Đang chạy/Hoàn thành, tạo chuyến mới, thêm/sửa/xóa chi phí per trip, xác nhận hoàn thành với doanh thu thực tế. Thêm bảng `chi_phi_chuyen`. Đổi `ngay` → `ngay_bat_dau` (timestamptz) trên `trips`, thêm `trang_thai`/`ngay_ket_thuc`. Update `formatDate()` xuất `HH:MM - DD/MM/YY`. Fix filter tháng dùng timestamptz trong `owner-dashboard.html` và `driver.html`.
-- Bài 30 (2026-05-03): Thay toàn bộ `alert()` bằng `showToast()` trong 4 page. Refactor `driver-page.html` — bỏ `showMsg()`/`#msg` div, thêm `resetForm()`.
-- Bài 29 (2026-05-03): Tạo `shared.js`, fix lệch ID Auth/users, đồng bộ format tiền tệ, thêm nav `vehicles.html` ở header owner-dashboard, `setupLogoutListener` cho mọi admin page.
-- Bài 28: Redesign `bai10.html` thành landing mobile-first (hero + stats public + features + CTA).
-- Bài 27: Security hardening — chuyển từ `innerHTML` template literal sang `createElement`/`textContent` (chống XSS), validation `Number.isFinite`, error handling toàn diện, `.table-scroll` wrapper cho mobile.
-- Bài 26: Tách shared `style.css`, xóa `<style>` blocks khỏi 4 page admin/driver.
-- Bài 25 trở về trước: xem `git log`.
