@@ -143,6 +143,7 @@
             }
 
             async function saveNotifySetting(key, value) {
+                console.log('saveNotifySetting', key, value, currentOwnerProfileId)
                 await sb.from('notify_settings')
                     .upsert({ user_id: currentOwnerProfileId, [key]: value }, { onConflict: 'user_id' })
             }

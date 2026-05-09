@@ -38,7 +38,7 @@ export default async function handler(req, res) {
     const { data: settings } = await sb
         .from('notify_settings')
         .select('notify_new_trip, notify_complete, notify_expense')
-        .eq('owner_id', owner_id)
+        .eq('user_id', owner_id)
         .single()
 
     if (settings && settings[`notify_${type}`] === false) {
@@ -48,7 +48,7 @@ export default async function handler(req, res) {
     // Get push subscription for this owner
     const { data: sub, error: subErr } = await sb
         .from('push_subscriptions')
-        .select('subscription')
+        .select('subscription_json')
         .eq('user_id', owner_id)
         .single()
 
@@ -64,7 +64,7 @@ export default async function handler(req, res) {
     })
 
     try {
-        await webpush.sendNotification(sub.subscription, pushPayload)
+        await webpush.sendNotification(sub.subscription_json, pushPayload)
         return res.status(200).json({ ok: true })
     } catch (e) {
         if (e.statusCode === 410) {
