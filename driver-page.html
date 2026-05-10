@@ -346,10 +346,35 @@
 
     // ── Money hint ────────────────────────────────────────────────────
     function numberToVietnamese(n) {
-        if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1).replace('.0', '') + ' tỷ đ'
-        if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace('.0', '') + ' triệu đ'
-        if (n >= 1_000) return (n / 1_000).toFixed(1).replace('.0', '') + ' nghìn đ'
-        return formatMoney(n)
+        if (n === 0) return 'không đồng'
+        const UNITS = ['', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín']
+        function readTens(t, u) {
+            if (t === 1) return 'mười' + (u > 0 ? ' ' + (u === 5 ? 'lăm' : UNITS[u]) : '')
+            return UNITS[t] + ' mươi' + (u > 0 ? ' ' + (u === 1 ? 'mốt' : u === 5 ? 'lăm' : UNITS[u]) : '')
+        }
+        function readThreeDigits(n) {
+            if (n === 0) return ''
+            const h = Math.floor(n / 100)
+            const t = Math.floor((n % 100) / 10)
+            const u = n % 10
+            if (h > 0) {
+                let r = UNITS[h] + ' trăm'
+                if (t === 0 && u > 0) r += ' lẻ ' + UNITS[u]
+                else if (t > 0) r += ' ' + readTens(t, u)
+                return r
+            }
+            return t > 0 ? readTens(t, u) : UNITS[u]
+        }
+        const ty = Math.floor(n / 1_000_000_000)
+        const trieu = Math.floor((n % 1_000_000_000) / 1_000_000)
+        const nghin = Math.floor((n % 1_000_000) / 1_000)
+        const remainder = n % 1_000
+        const parts = []
+        if (ty > 0) parts.push(readThreeDigits(ty) + ' tỷ')
+        if (trieu > 0) parts.push(readThreeDigits(trieu) + ' triệu')
+        if (nghin > 0) parts.push(readThreeDigits(nghin) + ' nghìn')
+        if (remainder > 0) parts.push(readThreeDigits(remainder))
+        return parts.join(' ') + ' đ'
     }
 
     function addMoneyHint(input) {
