@@ -345,12 +345,19 @@
     }
 
     // ── Money hint ────────────────────────────────────────────────────
+    function numberToVietnamese(n) {
+        if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1).replace('.0', '') + ' tỷ đ'
+        if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace('.0', '') + ' triệu đ'
+        if (n >= 1_000) return (n / 1_000).toFixed(1).replace('.0', '') + ' nghìn đ'
+        return formatMoney(n)
+    }
+
     function addMoneyHint(input) {
         const hint = document.createElement('small')
         hint.style.cssText = 'color:var(--primary);font-size:0.85em;margin-top:4px;display:block;min-height:1.2em'
         input.addEventListener('input', () => {
             const n = Number(input.value)
-            hint.textContent = (input.value && Number.isFinite(n)) ? formatMoney(n) : ''
+            hint.textContent = (input.value && Number.isFinite(n)) ? numberToVietnamese(n) : ''
         })
         input.insertAdjacentElement('afterend', hint)
         return hint
@@ -567,7 +574,7 @@
         soTienInput.setAttribute('data-field', 'so_tien')
         soTienGroup.append(soTienLabel, soTienInput)
         const soTienHint = addMoneyHint(soTienInput)
-        if (soTienInput.value) soTienHint.textContent = formatMoney(Number(soTienInput.value))
+        if (soTienInput.value) soTienHint.textContent = numberToVietnamese(Number(soTienInput.value))
 
         const moTaGroup = document.createElement('div')
         moTaGroup.className = 'form-group'
