@@ -174,7 +174,15 @@
                     const thucNhan = totalLuong - totalAdvance
                     const row = document.createElement('tr')
 
-                    addCell(row, d.full_name || '-')
+                    const nameCell = document.createElement('td')
+                    const nameSpan = document.createElement('span')
+                    nameSpan.textContent = d.full_name || '-'
+                    nameSpan.style.color = 'var(--primary)'
+                    nameSpan.style.textDecoration = 'underline'
+                    nameSpan.style.cursor = 'pointer'
+                    nameSpan.addEventListener('click', () => openTripsModal(d.id, d.full_name || '-'))
+                    nameCell.appendChild(nameSpan)
+                    row.appendChild(nameCell)
                     addCell(row, d.email || '-')
                     addCell(row, d.sdt || '-')
                     addCell(row, myTrips.length + ' chuyến')
@@ -253,6 +261,83 @@
             else loadDrivers()
         }
 
+        async function openTripsModal(driverId, driverName) {
+            document.getElementById('trips-modal-title').textContent = 'Chuyến của ' + driverName
+            document.getElementById('trips-modal-body').textContent = 'Đang tải...'
+            document.getElementById('trips-modal').style.display = 'flex'
+
+            const month = document.getElementById('filter-month').value
+            let query = sb.from('trips')
+                .select('id, ngay_bat_dau, tuyen_duong, doanh_thu, trang_thai')
+                .eq('tai_xe_id', driverId)
+                .order('ngay_bat_dau', { ascending: false })
+
+            if (month) {
+                const start = month + '-01'
+                const end = new Date(month + '-01')
+                end.setMonth(end.getMonth() + 1)
+                query = query.gte('ngay_bat_dau', start + 'T00:00:00').lt('ngay_bat_dau', end.toISOString().split('T')[0] + 'T00:00:00')
+            }
+
+            const { data, error } = await query
+            const body = document.getElementById('trips-modal-body')
+
+            if (error) {
+                body.textContent = 'Lỗi: ' + error.message
+                return
+            }
+            if (!data || data.length === 0) {
+                body.textContent = 'Không có chuyến nào'
+                return
+            }
+
+            const tripStatusLabels = {
+                dang_chay: '🟢 Đang chạy',
+                hoan_thanh: '✅ Hoàn thành'
+            }
+
+            const table = document.createElement('table')
+            const thead = document.createElement('thead')
+            const headRow = document.createElement('tr')
+            ;['Ngày', 'Tuyến đường', 'Doanh thu', 'Trạng thái'].forEach(label => {
+                const th = document.createElement('th')
+                th.textContent = label
+                headRow.appendChild(th)
+            })
+            thead.appendChild(headRow)
+
+            const tbody = document.createElement('tbody')
+            data.forEach(t => {
+                const row = document.createElement('tr')
+                const dateCell = document.createElement('td')
+                dateCell.textContent = formatDate(t.ngay_bat_dau)
+                row.appendChild(dateCell)
+
+                const routeCell = document.createElement('td')
+                routeCell.textContent = t.tuyen_duong || '-'
+                row.appendChild(routeCell)
+
+                const revenueCell = document.createElement('td')
+                revenueCell.textContent = t.doanh_thu === null || t.doanh_thu === undefined ? '-' : formatMoney(t.doanh_thu)
+                revenueCell.style.color = '#e67e22'
+                row.appendChild(revenueCell)
+
+                const statusCell = document.createElement('td')
+                statusCell.textContent = tripStatusLabels[t.trang_thai] || t.trang_thai || '-'
+                row.appendChild(statusCell)
+
+                tbody.appendChild(row)
+            })
+
+            table.append(thead, tbody)
+            body.textContent = ''
+            body.appendChild(table)
+        }
+
+        function closeTripsModal() {
+            document.getElementById('trips-modal').style.display = 'none'
+        }
+
         function clearFilter() {
             document.getElementById('filter-month').value = ''
             loadDrivers()
@@ -307,5 +392,15 @@
         initPage()
     </script>
     <div class="toast" id="toast"></div>
+
+    <div id="trips-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+        <div style="background:var(--white);border-radius:var(--radius);padding:24px;width:600px;max-width:95%;max-height:80vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <h3 id="trips-modal-title" style="margin:0"></h3>
+                <button class="btn btn-gray" onclick="closeTripsModal()">Đóng</button>
+            </div>
+            <div id="trips-modal-body"></div>
+        </div>
+    </div>
 </body>
 </html>
