@@ -100,11 +100,9 @@
             if (emailError) { showToast('Lỗi kiểm tra email: ' + emailError.message, 'error'); return }
             if (emailExists) { showToast('Email đã tồn tại', 'error'); return }
 
-            if (sdt) {
-                const { data: sdtExists, error: sdtError } = await sb.from('users').select('id').eq('sdt', sdt).maybeSingle()
-                if (sdtError) { showToast('Lỗi kiểm tra SĐT: ' + sdtError.message, 'error'); return }
-                if (sdtExists) { showToast('Số điện thoại đã tồn tại', 'error'); return }
-            }
+            const { data: sdtExists, error: sdtError } = await sb.from('users').select('id').eq('sdt', sdt).maybeSingle()
+            if (sdtError) { showToast('Lỗi kiểm tra SĐT: ' + sdtError.message, 'error'); return }
+            if (sdtExists) { showToast('Số điện thoại đã tồn tại', 'error'); return }
 
             const { error } = await sb.from('users').insert({
                 full_name,

@@ -31,6 +31,10 @@
         </div>
         <div class="card">
             <h3>Danh sách xe</h3>
+            <div class="filter-bar">
+                <input type="month" id="trips-filter-month">
+                <button class="btn" onclick="loadAllTripRows()">Lọc</button>
+            </div>
             <div class="table-scroll wide">
                 <table>
                     <thead>
@@ -287,6 +291,7 @@
                     actions.append(
                         createButton('Đổi TT', 'btn', () => changeStatus(v.id, v.trang_thai)),
                         createButton('🔧 Bảo dưỡng', 'btn btn-warning', () => toggleMaintenance(v.id)),
+                        createButton('📋 Chuyến', 'btn btn-success', () => toggleTrips(v.id)),
                         createButton('Xóa', 'btn btn-danger', () => deleteVehicle(v.id, v.bien_so || ''))
                     )
                     actionCell.appendChild(actions)
@@ -294,6 +299,7 @@
 
                     tbody.appendChild(row)
                     tbody.appendChild(buildMaintenanceRow(v.id, v.bien_so || ''))
+                    tbody.appendChild(buildTripsRow(v.id, v.bien_so || ''))
                 })
             } catch (err) {
                 console.error('Load vehicles error:', err)
@@ -400,6 +406,125 @@
             document.getElementById('maint-mota-' + xeId).value = ''
             document.getElementById('maint-chiphi-' + xeId).value = ''
             loadMaintenance(xeId)
+        }
+
+        function buildTripsRow(vehicleId, bienSo) {
+            const row = document.createElement('tr')
+            row.id = 'trips-row-' + vehicleId
+            row.style.display = 'none'
+
+            const cell = document.createElement('td')
+            cell.colSpan = 5
+            cell.style.padding = '0 12px 12px'
+
+            const panel = document.createElement('div')
+            panel.className = 'maintenance-panel'
+
+            const title = document.createElement('h4')
+            title.textContent = '🚛 Chuyến xe ' + bienSo
+
+            const history = document.createElement('div')
+            history.id = 'trips-history-' + vehicleId
+
+            panel.append(title, history)
+            cell.appendChild(panel)
+            row.appendChild(cell)
+            return row
+        }
+
+        function toggleTrips(vehicleId) {
+            const row = document.getElementById('trips-row-' + vehicleId)
+            if (!row) return
+            if (row.style.display === 'none') {
+                row.style.display = ''
+                loadTrips(vehicleId)
+            } else {
+                row.style.display = 'none'
+            }
+        }
+
+        async function loadTrips(vehicleId) {
+            const container = document.getElementById('trips-history-' + vehicleId)
+            if (!container) return
+            setMaintenanceMessage(container, 'Đang tải...')
+
+            const { data: xe, error: xeError } = await sb.from('xe').select('tai_xe_id').eq('id', vehicleId).maybeSingle()
+            if (xeError) {
+                setMaintenanceMessage(container, 'Không thể tải dữ liệu xe')
+                return
+            }
+            if (!xe || !xe.tai_xe_id) {
+                setMaintenanceMessage(container, 'Xe chưa có tài xế')
+                return
+            }
+
+            let query = sb.from('trips').select('*').eq('tai_xe_id', xe.tai_xe_id).order('ngay_bat_dau', { ascending: false })
+
+            const month = document.getElementById('trips-filter-month').value
+            if (month) {
+                const [year, mon] = month.split('-').map(Number)
+                const nextDate = new Date(year, mon, 1)
+                const nextYear = nextDate.getFullYear()
+                const nextMon = String(nextDate.getMonth() + 1).padStart(2, '0')
+                const nextMonthStr = nextYear + '-' + nextMon + '-01'
+                query = query.gte('ngay_bat_dau', month + '-01T00:00:00').lt('ngay_bat_dau', nextMonthStr + 'T00:00:00')
+            }
+
+            const { data, error } = await query
+            if (error) {
+                setMaintenanceMessage(container, 'Không thể tải chuyến xe')
+                showToast('Lỗi: ' + error.message, 'error')
+                return
+            }
+
+            if (!data || data.length === 0) {
+                setMaintenanceMessage(container, 'Chưa có chuyến xe nào')
+                return
+            }
+
+            const tripStatusLabels = {
+                dang_chay: '🟡 Đang chạy',
+                hoan_thanh: '🟢 Hoàn thành'
+            }
+
+            const table = document.createElement('table')
+            table.style.marginTop = '12px'
+
+            const thead = document.createElement('thead')
+            const headRow = document.createElement('tr')
+            const headers = ['Ngày bắt đầu', 'Tuyến đường', 'Tài xế', 'Doanh thu', 'Trạng thái']
+            headers.forEach(label => {
+                const th = document.createElement('th')
+                th.textContent = label
+                headRow.appendChild(th)
+            })
+            thead.appendChild(headRow)
+
+            const tbody = document.createElement('tbody')
+            data.forEach(t => {
+                const row = document.createElement('tr')
+                const driver = drivers.find(d => d.id === t.tai_xe_id)
+                addCell(row, formatDate(t.ngay_bat_dau))
+                addCell(row, t.tuyen_duong || '-')
+                addCell(row, driver ? driver.full_name : '-')
+                addCell(row, t.doanh_thu === null || t.doanh_thu === undefined ? '-' : formatMoney(t.doanh_thu))
+                addCell(row, tripStatusLabels[t.trang_thai] || t.trang_thai || '-')
+                tbody.appendChild(row)
+            })
+
+            table.append(thead, tbody)
+            container.textContent = ''
+            container.appendChild(table)
+        }
+
+        function loadAllTripRows() {
+            const rows = document.querySelectorAll('[id^="trips-row-"]')
+            rows.forEach(row => {
+                if (row.style.display !== 'none') {
+                    const vehicleId = row.id.replace('trips-row-', '')
+                    loadTrips(vehicleId)
+                }
+            })
         }
 
         async function deleteMaintenance(id, xeId) {
