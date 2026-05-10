@@ -93,7 +93,7 @@
             tbody.textContent = ''
             const row = document.createElement('tr')
             const cell = document.createElement('td')
-            cell.colSpan = 5
+            cell.colSpan = 6
             cell.textContent = message
             row.appendChild(cell)
             tbody.appendChild(row)
@@ -101,7 +101,7 @@
 
         async function loadDrivers() {
             try {
-                const { data, error } = await sb.from('users').select('id, full_name, sdt').eq('role', 'driver')
+                const { data, error } = await sb.from('users').select('id, full_name').eq('role', 'driver')
                 if (error) throw new Error(error.message)
 
                 drivers = data || []
@@ -135,22 +135,10 @@
                 return
             }
 
-            const { data: existing, error: existingError } = await sb.from('xe').select('id').eq('bien_so', bien_so).maybeSingle()
-            if (existingError) {
-                showToast('Lỗi kiểm tra biển số: ' + existingError.message, 'error')
-                return
-            }
+            const { data: existing } = await sb.from('xe').select('id').eq('bien_so', bien_so).maybeSingle()
             if (existing) {
                 showToast('Biển số đã tồn tại!', 'error')
                 return
-            }
-
-            if (tai_xe_id) {
-                const { data: driverBusy } = await sb.from('xe').select('id').eq('tai_xe_id', tai_xe_id).maybeSingle()
-                if (driverBusy) {
-                    showToast('Tài xế đang lái xe khác!', 'error')
-                    return
-                }
             }
 
             const { error } = await sb.from('xe').insert({
@@ -196,7 +184,7 @@
             row.style.display = 'none'
 
             const cell = document.createElement('td')
-            cell.colSpan = 5
+            cell.colSpan = 6
             cell.style.padding = '0 12px 12px'
 
             const panel = document.createElement('div')
@@ -262,10 +250,6 @@
                     const plateCell = document.createElement('td')
                     const plate = document.createElement('strong')
                     plate.textContent = v.bien_so || '-'
-                    plate.style.color = 'var(--primary)'
-                    plate.style.textDecoration = 'underline'
-                    plate.style.cursor = 'pointer'
-                    plate.addEventListener('click', () => openDriverModal(v.id, v.tai_xe_id))
                     plateCell.appendChild(plate)
                     row.appendChild(plateCell)
 
@@ -409,54 +393,6 @@
             else loadMaintenance(xeId)
         }
 
-        let modalVehicleId = null
-
-        function openDriverModal(vehicleId, currentTaiXeId) {
-            modalVehicleId = vehicleId
-            const select = document.getElementById('modal-tai-xe')
-            select.textContent = ''
-            const noneOption = document.createElement('option')
-            noneOption.value = ''
-            noneOption.textContent = '-- Không có tài xế --'
-            select.appendChild(noneOption)
-            drivers.forEach(d => {
-                const option = document.createElement('option')
-                option.value = d.id
-                option.textContent = d.full_name || 'Chưa đặt tên'
-                select.appendChild(option)
-            })
-            select.value = currentTaiXeId || ''
-            const modal = document.getElementById('change-driver-modal')
-            modal.style.display = 'flex'
-        }
-
-        function closeDriverModal() {
-            document.getElementById('change-driver-modal').style.display = 'none'
-            modalVehicleId = null
-        }
-
-        async function saveDriverChange() {
-            if (!modalVehicleId) return
-            const tai_xe_id = document.getElementById('modal-tai-xe').value || null
-            const trang_thai = tai_xe_id ? 'hoat_dong' : 'tam_nghi'
-
-            if (tai_xe_id) {
-                const { data: driverBusy } = await sb.from('xe').select('id').eq('tai_xe_id', tai_xe_id).neq('id', modalVehicleId).maybeSingle()
-                if (driverBusy) {
-                    showToast('Tài xế đang lái xe khác!', 'error')
-                    return
-                }
-            }
-
-            const { error } = await sb.from('xe').update({ tai_xe_id, trang_thai }).eq('id', modalVehicleId)
-            if (error) {
-                showToast('Lỗi: ' + error.message, 'error')
-                return
-            }
-            closeDriverModal()
-            loadVehicles()
-        }
-
         async function logout() {
             await sb.auth.signOut()
             window.location.href = 'bai10.html'
@@ -473,18 +409,5 @@
         init()
     </script>
     <div class="toast" id="toast"></div>
-
-    <div id="change-driver-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
-        <div style="background:var(--white);border-radius:var(--radius);padding:24px;width:320px;max-width:90%;">
-            <h3 style="margin:0 0 16px">Đổi tài xế</h3>
-            <select id="modal-tai-xe" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:15px;color:#1a1a2e;background:white">
-                <option value="">-- Không có tài xế --</option>
-            </select>
-            <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
-                <button class="btn btn-gray" onclick="closeDriverModal()">Hủy</button>
-                <button class="btn" onclick="saveDriverChange()">Lưu</button>
-            </div>
-        </div>
-    </div>
 </body>
 </html>

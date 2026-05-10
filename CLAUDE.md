@@ -31,7 +31,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - `trip-detail.html` — trang shared cho cả driver và owner xem chi tiết 1 chuyến. Auth dùng `getSession() + getUserProfile()` (không dùng `requireRole`). Driver chỉ xem được trip của mình; owner xem được tất cả. Driver + dang_chay: có thể thêm/sửa/xóa chi phí inline. Hiển thị GPS links nếu có tọa độ.
 - `driver-page.html` — driver quản lý chuyến theo flow mới: 2 tab ("Đang chạy" / "Hoàn thành"), tạo chuyến → thêm nhiều chi phí phát sinh (có GPS bắt buộc) → xác nhận hoàn thành (có confirm modal).
 - `driver.html` — owner quản lý tài xế, tính lương theo tháng, export Excel/PDF.
-- `vehicles.html` — owner quản lý xe + bảo dưỡng inline.
+- `vehicles.html` — owner quản lý xe + bảo dưỡng inline. Form thêm xe không có trường năm sản xuất (cột `nam_sx` vẫn tồn tại trong DB nhưng không hiển thị). Bấm vào biển số (gạch chân, màu primary) để mở modal đổi tài xế (`openDriverModal`). `trang_thai` tự set: `'hoat_dong'` nếu có `tai_xe_id`, `'tam_nghi'` nếu không. App enforce mỗi tài xế chỉ lái 1 xe (check bằng `maybeSingle()` trước insert/update).
 - `style.css` — design system shared, dùng CSS variables.
 - `shared.js` — JS utilities shared (xem dưới).
 - `sw.js` + `manifest.json` — PWA, chỉ register từ `bai10.html`. Khi deploy thay đổi cho các file được cache (bai10, style.css, manifest, icons), phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v5`) để invalidate cache cũ. Có push handler (hiện notification) + notificationclick handler (focus tab cũ hoặc mở tab mới tới URL trong `notification.data.url`).
@@ -125,6 +125,8 @@ chi_phi_chuyen (id, trip_id, loai, mo_ta, so_tien, anh_url, created_at, lat, lng
                 -- lat/lng: nullable, tọa độ GPS khi thêm chi phí
 tam_ung_thang  (id, tai_xe_id, thang, so_tien, ghi_chu)                -- thang format: 'YYYY-MM'
 xe             (id, bien_so, loai_xe, nam_sx, trang_thai, tai_xe_id)   -- trang_thai: 'hoat_dong' | 'bao_duong' | 'tam_nghi'
+                -- nam_sx: tồn tại trong DB nhưng không còn hiển thị trong UI
+                -- tai_xe_id: unique per xe (enforced in app code, không có DB constraint)
 bao_duong      (id, xe_id, ngay, loai, mo_ta, chi_phi, created_at)     -- loai: 'hong_hoc' | 'linh_kien' | 'lop_xe' | 'dinh_ky'
 push_subscriptions (user_id uuid PK, subscription_json jsonb)          -- Web Push subscription object; upsert on conflict user_id
 notify_settings    (user_id uuid PK, notify_new_trip bool, notify_complete bool, notify_expense bool)
@@ -152,4 +154,5 @@ notify_settings    (user_id uuid PK, notify_new_trip bool, notify_complete bool,
 - **Date format hiển thị**: `HH:MM - DD/MM/YY` (2 chữ số năm, có giờ phút). Đây là output của `formatDate()` hiện tại.
 - **Currency**: luôn `đ` (chữ thường), KHÔNG dùng `₫` unicode.
 - **Google OAuth `redirectTo`**: dùng `window.location.origin + '/bai10.html'` để hoạt động cả local và production.
+- **`maybeSingle()` error handling**: trả về `{ data: null, error: null }` khi không có row — không phải lỗi. Chỉ `error !== null` mới là lỗi DB thực sự. Luôn destructure cả `data` và `error` để phân biệt "không tìm thấy" vs "lỗi query".
 
