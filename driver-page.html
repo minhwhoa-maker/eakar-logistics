@@ -344,6 +344,18 @@
         return card
     }
 
+    // ── Money hint ────────────────────────────────────────────────────
+    function addMoneyHint(input) {
+        const hint = document.createElement('small')
+        hint.style.cssText = 'color:var(--primary);font-size:0.85em;margin-top:4px;display:block;min-height:1.2em'
+        input.addEventListener('input', () => {
+            const n = Number(input.value)
+            hint.textContent = (input.value && Number.isFinite(n)) ? formatMoney(n) : ''
+        })
+        input.insertAdjacentElement('afterend', hint)
+        return hint
+    }
+
     // ── Add Expense Form ──────────────────────────────────────────────
     function buildAddExpenseForm(tripId) {
         const wrap = document.createElement('div')
@@ -377,6 +389,7 @@
         soTienInput.type = 'number'
         soTienInput.setAttribute('data-field', 'so_tien')
         soTienGroup.append(soTienLabel, soTienInput)
+        addMoneyHint(soTienInput)
 
         const moTaGroup = document.createElement('div')
         moTaGroup.className = 'form-group'
@@ -553,6 +566,8 @@
         soTienInput.value = exp.so_tien || ''
         soTienInput.setAttribute('data-field', 'so_tien')
         soTienGroup.append(soTienLabel, soTienInput)
+        const soTienHint = addMoneyHint(soTienInput)
+        if (soTienInput.value) soTienHint.textContent = formatMoney(Number(soTienInput.value))
 
         const moTaGroup = document.createElement('div')
         moTaGroup.className = 'form-group'
@@ -653,6 +668,8 @@
             i.type = 'number'
             i.setAttribute('data-field', fieldName)
             g.append(l, i)
+            const MONEY_FIELDS = ['doanh_thu', 'luong_chuyen', 'tam_ung', 'hoan_ung']
+            if (MONEY_FIELDS.includes(fieldName)) addMoneyHint(i)
             return g
         }
 
