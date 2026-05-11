@@ -190,10 +190,10 @@
                 trips.forEach((trip) => {
                     const row = document.createElement('tr')
                     row.style.cursor = 'pointer'
-                    row.addEventListener('mouseenter', () => row.style.background = '#e3f2fd')
-                    row.addEventListener('mouseleave', () => row.style.background = '')
-                    row.addEventListener('touchstart', () => row.style.background = '#e3f2fd', { passive: true })
-                    row.addEventListener('touchend', () => setTimeout(() => row.style.background = '', 800), { passive: true })
+                    row.addEventListener('click', () => {
+                      document.querySelectorAll('#report-body tr').forEach(r => r.style.background = '')
+                      row.style.background = '#e3f2fd'
+                    })
                     const doanhThu = toNumber(trip.doanh_thu)
                     const chiPhi = toNumber(trip.chi_phi)
                     const loiNhuan = doanhThu - chiPhi
