@@ -555,6 +555,11 @@
             if (!auth) return
             await loadDrivers()
             await loadVehicles()
+            document.getElementById('new-bien-so').addEventListener('blur', () => {
+                const input = document.getElementById('new-bien-so')
+                const formatted = formatBienSo(input.value.trim())
+                if (formatted) input.value = formatted
+            })
         }
         setupLogoutListener(sb)
         init()
