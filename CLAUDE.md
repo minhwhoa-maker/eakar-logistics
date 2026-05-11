@@ -110,7 +110,7 @@ Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"typ
 
 ```
 users          (id, email, full_name, sdt, role)                        -- role: 'owner' | 'driver'
-trips          (id, ngay_bat_dau, ngay_ket_thuc, tuyen_duong, doanh_thu,
+trips          (id, owner_id, ngay_bat_dau, ngay_ket_thuc, tuyen_duong, doanh_thu,
                 chi_phi, luong_chuyen, tam_ung, hoan_ung, tai_xe_id,
                 ghi_chu, trang_thai, anh_hoa_don,
                 lat_bat_dau, lng_bat_dau, lat_ket_thuc, lng_ket_thuc)
@@ -123,11 +123,13 @@ chi_phi_chuyen (id, trip_id, loai, mo_ta, so_tien, anh_url, created_at, lat, lng
                 -- loai: 'xang' | 'sua_xe' | 'bai_xe' | 'khac'
                 -- anh_url: public URL từ storage bucket 'receipts'
                 -- lat/lng: nullable, tọa độ GPS khi thêm chi phí
-tam_ung_thang  (id, tai_xe_id, thang, so_tien, ghi_chu)                -- thang format: 'YYYY-MM'
-xe             (id, bien_so, loai_xe, nam_sx, trang_thai, tai_xe_id)   -- trang_thai: 'hoat_dong' | 'bao_duong' | 'tam_nghi'
+tam_ung_thang  (id, owner_id, tai_xe_id, thang, so_tien, ghi_chu)      -- thang format: 'YYYY-MM'
+xe             (id, owner_id, bien_so, loai_xe, nam_sx, trang_thai, tai_xe_id)
+                -- trang_thai: 'hoat_dong' | 'bao_duong' | 'tam_nghi'
                 -- nam_sx: tồn tại trong DB nhưng ẩn khỏi UI vehicles.html
                 -- tai_xe_id: không có UNIQUE constraint trong DB, app tự enforce
-bao_duong      (id, xe_id, ngay, loai, mo_ta, chi_phi, created_at)     -- loai: 'hong_hoc' | 'linh_kien' | 'lop_xe' | 'dinh_ky'
+bao_duong      (id, owner_id, xe_id, ngay, loai, mo_ta, chi_phi, created_at)
+                -- loai: 'hong_hoc' | 'linh_kien' | 'lop_xe' | 'dinh_ky'
 push_subscriptions (user_id uuid PK, subscription_json jsonb)          -- Web Push subscription object; upsert on conflict user_id
 notify_settings    (user_id uuid PK, notify_new_trip bool, notify_complete bool, notify_expense bool)
                                                                         -- NULL row = tất cả bật; chỉ cần upsert khi owner thay đổi
@@ -156,4 +158,10 @@ notify_settings    (user_id uuid PK, notify_new_trip bool, notify_complete bool,
 - **Google OAuth `redirectTo`**: dùng `window.location.origin + '/bai10.html'` để hoạt động cả local và production.
 - **`maybeSingle()` error handling**: luôn destructure cả `data` lẫn `error`. `{ data: null, error: null }` nghĩa là không tìm thấy row (bình thường). `error !== null` mới là lỗi DB thật. Pattern chuẩn: `const { data: x, error: xErr } = await sb.from(...).maybeSingle(); if (xErr) { showToast(...); return } if (x) { /* trùng */ return }`
 - **Clickable cell pattern**: khi một cell trong bảng là entry point vào modal, tạo `<span>` bên trong `<td>` với `style.color = 'var(--primary)'`, `textDecoration = 'underline'`, `cursor = 'pointer'`. Dùng `addEventListener('click', ...)` thay vì `onclick` attribute (đảm bảo closure đúng trong forEach).
+- **`owner_id` pattern** — `trips`, `xe`, `bao_duong`, `tam_ung_thang` đều có cột `owner_id` = `users.id` của owner. **Mọi SELECT phải filter `.eq('owner_id', ...)`, mọi INSERT phải include `owner_id`.** Mỗi page lưu owner_id vào biến riêng:
+  - `owner-dashboard.html` → `currentOwnerProfileId` (module level, gán từ `auth.profile.id` trong `initPage()`)
+  - `driver.html` → `ownerProfileId` (module level, gán từ `auth.profile.id` trong `initPage()`)
+  - `vehicles.html` → `ownerProfileId` (module level, gán từ `auth.profile.id` trong `init()`)
+  - `driver-page.html` → `currentOwnerId` (module level, query `users where role='owner'` trong `initPage()`)
+  - `trip-detail.html` → `ownerId` (local trong `initPage()`: nếu owner thì `currentProfile.id`, nếu driver thì query DB; nếu null thì toast + redirect)
 

@@ -233,7 +233,7 @@
             }
 
             async function loadTrips() {
-                let query = sb.from('trips').select('*').order('ngay_bat_dau', { ascending: false })
+                let query = sb.from('trips').select('*').eq('owner_id', currentOwnerProfileId).order('ngay_bat_dau', { ascending: false })
                 const month = document.getElementById('filter-month').value
                 if (month) {
                     const start = month + '-01'

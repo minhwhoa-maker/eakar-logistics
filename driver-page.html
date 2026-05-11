@@ -236,6 +236,7 @@
         try { loc = await getLocation() }
         catch (e) { showToast(e.message, 'error'); btn.disabled = false; return }
         const { error } = await sb.from('trips').insert({
+            owner_id: currentOwnerId,
             tuyen_duong, ghi_chu: ghi_chu || null,
             doanh_thu: 0, chi_phi: 0,
             trang_thai: 'dang_chay',
@@ -257,6 +258,7 @@
     async function loadActiveTrips() {
         const { data, error } = await sb
             .from('trips').select('*')
+            .eq('owner_id', currentOwnerId)
             .eq('tai_xe_id', currentProfileId)
             .eq('trang_thai', 'dang_chay')
             .order('ngay_bat_dau', { ascending: false })
@@ -786,6 +788,7 @@
     async function loadCompletedTrips() {
         const { data, error } = await sb
             .from('trips').select('*')
+            .eq('owner_id', currentOwnerId)
             .eq('tai_xe_id', currentProfileId)
             .eq('trang_thai', 'hoan_thanh')
             .order('ngay_bat_dau', { ascending: false })

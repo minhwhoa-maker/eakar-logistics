@@ -571,7 +571,22 @@
         if (!profile) { window.location.href = 'bai10.html'; return }
         currentProfile = profile
 
-        const { data: trip, error } = await sb.from('trips').select('*').eq('id', tripId).single()
+        let ownerId
+        if (currentProfile.role === 'owner') {
+            ownerId = currentProfile.id
+        } else {
+            const { data: ownerData } = await sb.from('users').select('id').eq('role', 'owner').single()
+            ownerId = ownerData?.id || null
+        }
+        if (ownerId === null) {
+            showToast('Không tìm thấy thông tin chủ xe', 'error')
+            setTimeout(() => {
+                window.location.href = profile.role === 'driver' ? 'driver-page.html' : 'owner-dashboard.html'
+            }, 1500)
+            return
+        }
+
+        const { data: trip, error } = await sb.from('trips').select('*').eq('owner_id', ownerId).eq('id', tripId).single()
         if (error || !trip) {
             showToast('Không tìm thấy chuyến', 'error')
             setTimeout(() => {

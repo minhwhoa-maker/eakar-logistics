@@ -68,6 +68,7 @@
             setTimeout(() => toast.className = 'toast', 3000);
         }
         const sb = createSb()
+        let ownerProfileId = null
 
         function addCell(row, text) {
             const cell = document.createElement('td')
@@ -148,7 +149,7 @@
                     return
                 }
 
-                let tripsQuery = sb.from('trips').select('tai_xe_id, luong_chuyen, ngay_bat_dau')
+                let tripsQuery = sb.from('trips').select('tai_xe_id, luong_chuyen, ngay_bat_dau').eq('owner_id', ownerProfileId)
                 if (month) {
                     const start = month + '-01'
                     const end = new Date(month + '-01')
@@ -159,7 +160,7 @@
                 const { data: trips, error: tripsError } = await tripsQuery
                 if (tripsError) throw new Error(tripsError.message)
 
-                let advancesQuery = sb.from('tam_ung_thang').select('*')
+                let advancesQuery = sb.from('tam_ung_thang').select('*').eq('owner_id', ownerProfileId)
                 if (month) advancesQuery = advancesQuery.eq('thang', month)
                 const { data: advances, error: advancesError } = await advancesQuery
                 if (advancesError) throw new Error(advancesError.message)
@@ -232,6 +233,7 @@
             const { data: existing, error: checkError } = await sb
                 .from('tam_ung_thang')
                 .select('id, so_tien')
+                .eq('owner_id', ownerProfileId)
                 .eq('tai_xe_id', driverId)
                 .eq('thang', month)
             if (checkError) {
@@ -252,6 +254,7 @@
             }
 
             const { error } = await sb.from('tam_ung_thang').insert({
+                owner_id: ownerProfileId,
                 tai_xe_id: driverId,
                 thang: month,
                 so_tien: parsedAmount
@@ -269,6 +272,7 @@
             const month = document.getElementById('filter-month').value
             let query = sb.from('trips')
                 .select('id, ngay_bat_dau, tuyen_duong, doanh_thu, trang_thai')
+                .eq('owner_id', ownerProfileId)
                 .eq('tai_xe_id', driverId)
                 .order('ngay_bat_dau', { ascending: false })
 
@@ -385,7 +389,9 @@
         async function initPage() {
             setDriverMessage('Đang tải ...')
             const auth = await requireRole(sb, 'owner')
-            if (auth) loadDrivers()
+            if (!auth) return
+            ownerProfileId = auth.profile.id
+            loadDrivers()
         }
 
         setupLogoutListener(sb)
