@@ -109,7 +109,8 @@
                 full_name,
                 email,
                 sdt,
-                role: 'driver'
+                role: 'driver',
+                owner_id: ownerProfileId
             })
 
             if (error) {
@@ -141,6 +142,7 @@
                     .from('users')
                     .select('*')
                     .eq('role', 'driver')
+                    .eq('owner_id', ownerProfileId)
 
                 if (driversError) throw new Error(driversError.message)
 
