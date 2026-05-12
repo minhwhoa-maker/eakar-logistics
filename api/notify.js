@@ -18,7 +18,7 @@ const NOTIFY_CONTENT = {
     }),
     expense: (p) => ({
         title: '💰 Chi phí mới',
-        body: `${p.driver_name} thêm chi phí: ${p.so_tien}`
+        body: `${p.driver_name} [${p.bien_so}] thêm ${p.loai}: ${p.so_tien}`
     })
 }
 

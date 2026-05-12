@@ -9,6 +9,14 @@ function createSb() {
 }
 
 // === Formatting ===
+function formatBienSo(bien_so) {
+    if (!bien_so) return bien_so
+    const s = bien_so.toUpperCase().replace(/[-. ]/g, '')
+    const match = s.match(/^([A-Z0-9]{2,4})([0-9]{3})([0-9]{2})$/)
+    if (!match) return bien_so
+    return match[1] + '-' + match[2] + '.' + match[3]
+}
+
 function formatMoney(n) {
     const amount = Number(n)
     return (Number.isFinite(amount) ? amount : 0).toLocaleString('vi-VN') + ' đ'

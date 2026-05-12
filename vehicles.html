@@ -551,14 +551,6 @@
             window.location.href = 'bai10.html'
         }
 
-        function formatBienSo(bien_so) {
-            if (!bien_so) return bien_so
-            const s = bien_so.toUpperCase().replace(/[-. ]/g, '')
-            const match = s.match(/^([A-Z0-9]{2,4})([0-9]{3})([0-9]{2})$/)
-            if (!match) return bien_so
-            return match[1] + '-' + match[2] + '.' + match[3]
-        }
-
         async function init() {
             setVehicleMessage('Đang tải ...')
             const auth = await requireRole(sb, 'owner')
