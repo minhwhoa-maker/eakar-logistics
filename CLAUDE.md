@@ -28,13 +28,13 @@ Không có build step, không có test runner, không có lint. Quy trình:
 ### Page roles
 - `bai10.html` — landing page + Google OAuth + role redirect. Có `<style>` block riêng (~220 dòng) cho hero/stats/features layout (KHÔNG dùng `.card` chuẩn).
 - `owner-dashboard.html` — owner xem báo cáo trips, filter tháng, realtime subscribe `trips`. Header có nav đến driver/vehicles. Bảng trips có cột "Chi tiết" link đến `trip-detail.html`. Có floating AI chatbot (nút FAB góc phải) gọi qua `/api/chat`. Nút 🔔 ở header mở dropdown `#notify-panel` (fixed, top:64px right:16px, click-outside để đóng) với 3 toggle switch (notify_new_trip / notify_complete / notify_expense), load/save qua `notify_settings` table. `setupPushNotifications(userId)` chạy mỗi lần login để đăng ký / tái sử dụng Web Push subscription. Bảng trips: row highlight bằng click + touchend (xóa highlight cũ trên `#report-body tr` trước, set background `#e3f2fd` cho row vừa tap/click). Mobile ≤600px: ẩn cột 4 (Chi phí) và cột 6 (Lương) bằng `nth-child` trong `<style>` block ở `<head>`.
-- `trip-detail.html` — trang shared cho cả driver và owner xem chi tiết 1 chuyến. Auth dùng `getSession() + getUserProfile()` (không dùng `requireRole`). Driver chỉ xem được trip của mình; owner xem được tất cả. Driver + dang_chay: có thể thêm/sửa/xóa chi phí inline. Hiển thị GPS links nếu có tọa độ.
+- `trip-detail.html` — trang shared cho cả driver và owner xem chi tiết 1 chuyến. Auth dùng `getSession() + getUserProfile()` (không dùng `requireRole`). Driver chỉ xem được trip của mình; owner xem được tất cả. Driver + dang_chay: có thể thêm/sửa/xóa chi phí inline. Hiển thị GPS links nếu có tọa độ. Ảnh hóa đơn trong bảng chi phí dùng `openImageModal(url)` (fullscreen overlay, click ngoài hoặc ✕ để đóng) — không mở tab mới.
 - `driver-page.html` — driver quản lý chuyến theo flow mới: 2 tab ("Đang chạy" / "Hoàn thành"), tạo chuyến → thêm nhiều chi phí phát sinh (có GPS bắt buộc) → xác nhận hoàn thành (có confirm modal). Module-level vars: `currentProfileId`, `currentDriverName`, `currentOwnerId` (từ `users.owner_id` của driver row), `currentBienSo` (từ `xe` table). `initPage()` kiểm tra xe assigned: nếu không có xe → hiện warning card đỏ trước `#active-trips` + ẩn `#btn-new-trip`; nếu có xe → hiện `#btn-new-trip`. Có 2 local helpers: `numberToVietnamese(n)` (đọc số tiền thành chữ VN, e.g. "một trăm ba mươi lăm nghìn đ") và `addMoneyHint(input)` (auto-format input thành dấu chấm nghìn, lưu raw digits vào `input.dataset.rawValue`, hiển thị hint chữ bên dưới). Các submit function đọc `dataset.rawValue || .value` để lấy số thực.
 - `driver.html` — owner quản lý tài xế, tính lương theo tháng, export Excel/PDF. Click vào tên tài xế → modal xem danh sách chuyến (filter theo tháng đang chọn). `addDriver()` check trùng email + SĐT qua `maybeSingle()` trước INSERT, include `owner_id: ownerProfileId`. `loadDrivers()` filter `.eq('owner_id', ownerProfileId)` — chỉ hiện tài xế của owner đang đăng nhập.
 - `vehicles.html` — owner quản lý xe + bảo dưỡng inline. Click biển số → modal đổi tài xế (kiểm tra tài xế đang lái xe khác). Nút "📋 Chuyến" → modal popup xem trips của xe (filter tháng bên trong modal, `#trips-filter-month`). `trang_thai` tự set `hoat_dong`/`tam_nghi` theo `tai_xe_id`. `nam_sx` là DB column nhưng ẩn khỏi UI. `tai_xe_id` unique được enforce ở app, không có DB constraint. Dùng `formatBienSo(s)` từ `shared.js` khi hiển thị và khi blur khỏi input biển số.
 - `style.css` — design system shared, dùng CSS variables.
 - `shared.js` — JS utilities shared (xem dưới).
-- `sw.js` + `manifest.json` — PWA, chỉ register từ `bai10.html`. Khi deploy thay đổi cho các file được cache (bai10, style.css, manifest, icons), phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v5`) để invalidate cache cũ. Có push handler (hiện notification) + notificationclick handler (focus tab cũ hoặc mở tab mới tới URL trong `notification.data.url`).
+- `sw.js` + `manifest.json` — PWA, chỉ register từ `bai10.html`. Khi deploy thay đổi cho các file được cache (bai10, style.css, manifest, icons), phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v6`) để invalidate cache cũ. Có push handler (hiện notification) + notificationclick handler (focus tab cũ hoặc mở tab mới tới URL trong `notification.data.url`).
 
 ### shared.js (BẮT BUỘC dùng cho mọi page mới)
 ```
@@ -105,7 +105,12 @@ Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"typ
 
 - **`api/chat.js`** — proxy SSE tới Anthropic API. Env: `ANTHROPIC_API_KEY`.
 - **`api/subscribe.js`** — POST `{ user_id, subscription }`, upsert vào `push_subscriptions`. Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
-- **`api/notify.js`** — POST `{ owner_id, type, payload }`. Check `notify_settings`, gửi push qua `web-push`, tự xóa subscription nếu 410. `type`: `'new_trip'` | `'complete'` | `'expense'`. Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`.
+- **`api/notify.js`** — POST `{ owner_id, type, payload }`. Check `notify_settings`, gửi push qua `web-push`, tự xóa subscription nếu 410. Push payload JSON bao gồm `title`, `body`, `icon`, và `url` (dùng trong `sw.js` notificationclick). `type` và payload fields bắt buộc:
+  - `'new_trip'`: `{ driver_name, bien_so, tuyen_duong }` → url: `/owner-dashboard.html`
+  - `'complete'`: `{ driver_name, bien_so, tuyen_duong }` → url: `/owner-dashboard.html`
+  - `'expense'`: `{ driver_name, bien_so, loai, so_tien, trip_id }` → url: `/trip-detail.html?id={trip_id}`
+  
+  Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`.
 
 ## Database
 
