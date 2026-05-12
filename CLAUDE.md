@@ -29,9 +29,9 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - `bai10.html` — landing page + Google OAuth + role redirect. Có `<style>` block riêng (~220 dòng) cho hero/stats/features layout (KHÔNG dùng `.card` chuẩn).
 - `owner-dashboard.html` — owner xem báo cáo trips, filter tháng, realtime subscribe `trips`. Header có nav đến driver/vehicles. Bảng trips có cột "Chi tiết" link đến `trip-detail.html`. Có floating AI chatbot (nút FAB góc phải) gọi qua `/api/chat`. Nút 🔔 ở header mở dropdown `#notify-panel` (fixed, top:64px right:16px, click-outside để đóng) với 3 toggle switch (notify_new_trip / notify_complete / notify_expense), load/save qua `notify_settings` table. `setupPushNotifications(userId)` chạy mỗi lần login để đăng ký / tái sử dụng Web Push subscription. Bảng trips: row highlight bằng click + touchend (xóa highlight cũ trên `#report-body tr` trước, set background `#e3f2fd` cho row vừa tap/click). Mobile ≤600px: ẩn cột 4 (Chi phí) và cột 6 (Lương) bằng `nth-child` trong `<style>` block ở `<head>`.
 - `trip-detail.html` — trang shared cho cả driver và owner xem chi tiết 1 chuyến. Auth dùng `getSession() + getUserProfile()` (không dùng `requireRole`). Driver chỉ xem được trip của mình; owner xem được tất cả. Driver + dang_chay: có thể thêm/sửa/xóa chi phí inline. Hiển thị GPS links nếu có tọa độ.
-- `driver-page.html` — driver quản lý chuyến theo flow mới: 2 tab ("Đang chạy" / "Hoàn thành"), tạo chuyến → thêm nhiều chi phí phát sinh (có GPS bắt buộc) → xác nhận hoàn thành (có confirm modal). Có 2 local helpers: `numberToVietnamese(n)` (đọc số tiền thành chữ VN, e.g. "một trăm ba mươi lăm nghìn đ") và `addMoneyHint(input)` (auto-format input thành dấu chấm nghìn, lưu raw digits vào `input.dataset.rawValue`, hiển thị hint chữ bên dưới). Các submit function đọc `dataset.rawValue || .value` để lấy số thực.
-- `driver.html` — owner quản lý tài xế, tính lương theo tháng, export Excel/PDF. Click vào tên tài xế → modal xem danh sách chuyến (filter theo tháng đang chọn). `addDriver()` check trùng email + SĐT qua `maybeSingle()` trước INSERT.
-- `vehicles.html` — owner quản lý xe + bảo dưỡng inline. Click biển số → modal đổi tài xế (kiểm tra tài xế đang lái xe khác). Nút "📋 Chuyến" → modal popup xem trips của xe (filter tháng bên trong modal, `#trips-filter-month`). `trang_thai` tự set `hoat_dong`/`tam_nghi` theo `tai_xe_id`. `nam_sx` là DB column nhưng ẩn khỏi UI. `tai_xe_id` unique được enforce ở app, không có DB constraint. `formatBienSo(s)` (local) chuẩn hóa biển số thành dạng `XX-NNN.NN` — dùng khi hiển thị và khi blur khỏi input biển số.
+- `driver-page.html` — driver quản lý chuyến theo flow mới: 2 tab ("Đang chạy" / "Hoàn thành"), tạo chuyến → thêm nhiều chi phí phát sinh (có GPS bắt buộc) → xác nhận hoàn thành (có confirm modal). Module-level vars: `currentProfileId`, `currentDriverName`, `currentOwnerId` (từ `users.owner_id` của driver row), `currentBienSo` (từ `xe` table). `initPage()` kiểm tra xe assigned: nếu không có xe → hiện warning card đỏ trước `#active-trips` + ẩn `#btn-new-trip`; nếu có xe → hiện `#btn-new-trip`. Có 2 local helpers: `numberToVietnamese(n)` (đọc số tiền thành chữ VN, e.g. "một trăm ba mươi lăm nghìn đ") và `addMoneyHint(input)` (auto-format input thành dấu chấm nghìn, lưu raw digits vào `input.dataset.rawValue`, hiển thị hint chữ bên dưới). Các submit function đọc `dataset.rawValue || .value` để lấy số thực.
+- `driver.html` — owner quản lý tài xế, tính lương theo tháng, export Excel/PDF. Click vào tên tài xế → modal xem danh sách chuyến (filter theo tháng đang chọn). `addDriver()` check trùng email + SĐT qua `maybeSingle()` trước INSERT, include `owner_id: ownerProfileId`. `loadDrivers()` filter `.eq('owner_id', ownerProfileId)` — chỉ hiện tài xế của owner đang đăng nhập.
+- `vehicles.html` — owner quản lý xe + bảo dưỡng inline. Click biển số → modal đổi tài xế (kiểm tra tài xế đang lái xe khác). Nút "📋 Chuyến" → modal popup xem trips của xe (filter tháng bên trong modal, `#trips-filter-month`). `trang_thai` tự set `hoat_dong`/`tam_nghi` theo `tai_xe_id`. `nam_sx` là DB column nhưng ẩn khỏi UI. `tai_xe_id` unique được enforce ở app, không có DB constraint. Dùng `formatBienSo(s)` từ `shared.js` khi hiển thị và khi blur khỏi input biển số.
 - `style.css` — design system shared, dùng CSS variables.
 - `shared.js` — JS utilities shared (xem dưới).
 - `sw.js` + `manifest.json` — PWA, chỉ register từ `bai10.html`. Khi deploy thay đổi cho các file được cache (bai10, style.css, manifest, icons), phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v5`) để invalidate cache cũ. Có push handler (hiện notification) + notificationclick handler (focus tab cũ hoặc mở tab mới tới URL trong `notification.data.url`).
@@ -39,6 +39,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 ### shared.js (BẮT BUỘC dùng cho mọi page mới)
 ```
 createSb()              → tạo Supabase client với URL+anon key built-in
+formatBienSo(s)         → chuẩn hóa biển số thành dạng "XX-NNN.NN" (uppercase, strip separators)
 formatMoney(n)          → "1.234.567 đ" (vi-VN locale + đ ký tự)
 formatDate(timestamptz) → "HH:MM - DD/MM/YY" (nhận ISO string hoặc timestamptz từ Supabase)
 getUserRole(sb, email)  → role string hoặc null
@@ -64,7 +65,7 @@ initPage()
 
 ### Auth flow & 2 ID schemes (gotcha quan trọng)
 `users.id` có thể có 2 origin khác nhau:
-- (a) **Auth UUID**: khi user signup qua `bai10.checkUserRole` (Google login lần đầu, chưa có row) → INSERT với `id: session.user.id`.
+- (a) **Auth UUID**: khi owner INSERT driver thủ công qua `bai10` flow cũ (đã bỏ) — không còn dùng.
 - (b) **DB-generated UUID**: khi owner tạo trước qua `driver.html addDriver` (không set id, để DB auto-gen).
 
 Khi user case (b) login lần đầu, bai10 thấy email đã có → skip insert → `users.id` ≠ Auth UUID. Vì vậy **mọi reference trong app phải dùng `users.id` (qua `currentProfileId`), KHÔNG dùng `currentUser.id` (Auth UUID)**:
@@ -109,7 +110,8 @@ Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"typ
 ## Database
 
 ```
-users          (id, email, full_name, sdt, role)                        -- role: 'owner' | 'driver'
+users          (id, email, full_name, sdt, role, owner_id)              -- role: 'owner' | 'driver'
+                -- owner_id: uuid FK → users.id; set khi owner tạo driver qua driver.html; NULL cho owner row
 trips          (id, owner_id, ngay_bat_dau, ngay_ket_thuc, tuyen_duong, doanh_thu,
                 chi_phi, luong_chuyen, tam_ung, hoan_ung, tai_xe_id,
                 ghi_chu, trang_thai, anh_hoa_don,
@@ -151,7 +153,7 @@ notify_settings    (user_id uuid PK, notify_new_trip bool, notify_complete bool,
 - **RLS disabled** trên tất cả tables. Khi bật RLS, các chỗ sau sẽ break:
   - `bai10.loadStats()` — query `trips`/`users` công khai để hiển thị landing stats.
   - Page admin/driver sẽ cần policy "user đọc được row của mình" + "owner đọc được tất cả".
-- **`bai10.checkUserRole`** là duy nhất chỗ INSERT vào `users` từ Google OAuth (signup-on-login). `shared.getUserRole/getUserProfile` chỉ select.
+- **`bai10.checkUserRole`**: Khi email không tìm thấy trong `users`, **không INSERT** — hiện inline error card (ẩn login UI, hiện card đỏ với nút "Thử lại bằng tài khoản khác" gọi `signOut()` + redirect `bai10.html`). `shared.getUserRole/getUserProfile` chỉ select. Drivers phải được owner tạo trước qua `driver.html`.
 - **`bai10.formatStatNumber`** (local) ≠ `shared.formatMoney`: bai10 hiển thị dạng rút gọn `1.2B`/`345M`/`12K`, các page khác dùng full `1.234.567 đ`.
 - **Date format hiển thị**: `HH:MM - DD/MM/YY` (2 chữ số năm, có giờ phút). Đây là output của `formatDate()` hiện tại.
 - **Currency**: luôn `đ` (chữ thường), KHÔNG dùng `₫` unicode.
@@ -162,6 +164,6 @@ notify_settings    (user_id uuid PK, notify_new_trip bool, notify_complete bool,
   - `owner-dashboard.html` → `currentOwnerProfileId` (module level, gán từ `auth.profile.id` trong `initPage()`)
   - `driver.html` → `ownerProfileId` (module level, gán từ `auth.profile.id` trong `initPage()`)
   - `vehicles.html` → `ownerProfileId` (module level, gán từ `auth.profile.id` trong `init()`)
-  - `driver-page.html` → `currentOwnerId` (module level, query `users where role='owner'` trong `initPage()`)
+  - `driver-page.html` → `currentOwnerId` (module level, query `users.owner_id where id = currentProfileId` trong `initPage()`)
   - `trip-detail.html` → `ownerId` (local trong `initPage()`: nếu owner thì `currentProfile.id`, nếu driver thì query DB; nếu null thì toast + redirect)
 
