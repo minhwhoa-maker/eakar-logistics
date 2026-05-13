@@ -236,7 +236,7 @@
         let loc
         try { loc = await getLocation() }
         catch (e) { showToast(e.message, 'error'); btn.disabled = false; return }
-        const { error } = await sb.from('trips').insert({
+        const { data: newTrip, error } = await sb.from('trips').insert({
             owner_id: currentOwnerId,
             tuyen_duong, ghi_chu: ghi_chu || null,
             doanh_thu: 0, chi_phi: 0,
@@ -244,14 +244,14 @@
             ngay_bat_dau: new Date().toISOString(),
             tai_xe_id: currentProfileId,
             lat_bat_dau: loc.lat, lng_bat_dau: loc.lng
-        })
+        }).select('id').single()
         btn.disabled = false
         if (error) { showToast('Lỗi: ' + error.message, 'error'); return }
         document.getElementById('new-trip-tuyen').value = ''
         document.getElementById('new-trip-ghi-chu').value = ''
         closeActiveForm()
         showToast('Tạo chuyến thành công', 'success')
-        notifyOwner('new_trip', { driver_name: currentDriverName, bien_so: currentBienSo, tuyen_duong })
+        notifyOwner('new_trip', { driver_name: currentDriverName, bien_so: currentBienSo, tuyen_duong, trip_id: newTrip?.id })
         loadActiveTrips()
     }
 
@@ -781,7 +781,7 @@
         closeActiveForm()
         showToast('Hoàn thành chuyến', 'success')
         const tripCard = document.querySelector(`[data-trip-id="${tripId}"]`)
-        notifyOwner('complete', { driver_name: currentDriverName, bien_so: currentBienSo, tuyen_duong: tripCard?.dataset.tuyenDuong || '' })
+        notifyOwner('complete', { driver_name: currentDriverName, bien_so: currentBienSo, tuyen_duong: tripCard?.dataset.tuyenDuong || '', trip_id: tripId })
         loadActiveTrips()
     }
 

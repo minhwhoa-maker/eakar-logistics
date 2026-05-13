@@ -57,7 +57,7 @@ export default async function handler(req, res) {
     }
 
     const { title, body } = NOTIFY_CONTENT[type](payload)
-    const url = type === 'expense' && payload.trip_id ? '/trip-detail.html?id=' + payload.trip_id : '/owner-dashboard.html'
+    const url = payload.trip_id ? '/trip-detail.html?id=' + payload.trip_id : '/owner-dashboard.html'
     const pushPayload = JSON.stringify({
         title,
         body,
