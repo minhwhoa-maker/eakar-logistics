@@ -77,6 +77,7 @@
     let currentDriverName = ''
     let currentOwnerId = null
     let currentBienSo = ''
+    let currentXeId = null
     let activeFormId = null
     let activeReceiptFile = null
 
@@ -243,6 +244,7 @@
             trang_thai: 'dang_chay',
             ngay_bat_dau: new Date().toISOString(),
             tai_xe_id: currentProfileId,
+            xe_id: currentXeId,
             lat_bat_dau: loc.lat, lng_bat_dau: loc.lng
         }).select('id').single()
         btn.disabled = false
@@ -830,7 +832,7 @@
             const btnDetail = document.createElement('button')
             btnDetail.className = 'btn btn-sm btn-gray'
             btnDetail.textContent = 'Chi tiết'
-            btnDetail.onclick = () => { window.location.href = 'trip-detail.html?id=' + trip.id }
+            btnDetail.onclick = () => { window.location.href = 'trip-detail.html?trip_id=' + trip.id }
             tdAction.appendChild(btnDetail)
             tr.appendChild(tdAction)
             tbody.appendChild(tr)
@@ -850,8 +852,9 @@
         currentProfileId = auth.profile.id
         const { data: u } = await sb.from('users').select('full_name').eq('id', currentProfileId).single()
         currentDriverName = u?.full_name || currentUser.email
-        const { data: xe } = await sb.from('xe').select('bien_so').eq('tai_xe_id', currentProfileId).maybeSingle()
+        const { data: xe } = await sb.from('xe').select('id, bien_so').eq('tai_xe_id', currentProfileId).maybeSingle()
         currentBienSo = formatBienSo(xe?.bien_so || '') || ''
+        currentXeId = xe?.id || null
         if (xe) {
             document.getElementById('btn-new-trip').style.display = ''
         } else {
