@@ -105,7 +105,7 @@ Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"typ
 
 - **`api/chat.js`** — pure proxy SSE tới Anthropic API; model, system prompt và messages đều đến từ `req.body` (do `owner-dashboard.html` gửi), không có gì hardcode server-side. Env: `ANTHROPIC_API_KEY`.
 - **`api/subscribe.js`** — POST `{ user_id, subscription }`, upsert vào `push_subscriptions`. Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
-- **`api/notify.js`** — POST `{ owner_id, type, payload }`. Check `notify_settings`, gửi push qua `web-push`, tự xóa subscription nếu 410. Push payload JSON bao gồm `title`, `body`, `icon`, và `url` (dùng trong `sw.js` notificationclick). URL logic: nếu `payload.trip_id` có giá trị → `/trip-detail.html?id={trip_id}`, ngược lại → `/owner-dashboard.html`. `type` và payload fields bắt buộc:
+- **`api/notify.js`** — POST `{ owner_id, type, payload }`. Check `notify_settings`, gửi push qua `web-push`, tự xóa subscription nếu 410. Push payload JSON bao gồm `title`, `body`, `icon`, và `url` (dùng trong `sw.js` notificationclick). URL logic: nếu `payload.trip_id` có giá trị → `/trip-detail.html?trip_id={trip_id}`, ngược lại → `/owner-dashboard.html`. `type` và payload fields bắt buộc:
   - `'new_trip'`: `{ driver_name, bien_so, tuyen_duong, trip_id }`
   - `'complete'`: `{ driver_name, bien_so, tuyen_duong, trip_id }`
   - `'expense'`: `{ driver_name, bien_so, loai, so_tien, trip_id }`
