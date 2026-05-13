@@ -44,9 +44,17 @@
     // ── Navigation ────────────────────────────────────────────────────
     function goBack() {
         const ref = document.referrer
-        if (ref.includes('driver-page')) window.location.href = 'driver-page.html'
-        else if (ref.includes('owner-dashboard')) window.location.href = 'owner-dashboard.html'
-        else history.back()
+        if (ref.includes('driver-page')) {
+            window.location.href = 'driver-page.html'
+        } else if (ref.includes('owner-dashboard')) {
+            window.location.href = 'owner-dashboard.html'
+        } else if (currentProfile?.role === 'driver') {
+            window.location.href = 'driver-page.html'
+        } else if (currentProfile?.role === 'owner') {
+            window.location.href = 'owner-dashboard.html'
+        } else {
+            window.location.href = 'bai10.html'
+        }
     }
 
     async function logout() {
