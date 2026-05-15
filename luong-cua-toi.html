@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lương của tôi</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="style.css">
+    <script src="shared.js"></script>
+</head>
+<body>
+    <div class="header">
+        <h2>💰 Lương của tôi</h2>
+        <div style="display:flex;gap:10px">
+            <button class="btn" onclick="window.location.href='driver-page.html'">← Trang chủ</button>
+            <button class="btn btn-logout" onclick="logout()">Đăng xuất</button>
+        </div>
+    </div>
+    <div class="container" id="main-content">
+        <p style="color:var(--text-muted);text-align:center;padding:24px">Đang tải...</p>
+    </div>
+
+    <div id="detail-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;padding:16px">
+        <div style="background:var(--white);border-radius:var(--radius);padding:24px;width:420px;max-width:100%;max-height:90vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <h3 id="detail-title" style="margin:0"></h3>
+                <button class="btn btn-gray" onclick="closeDetailModal()">✕</button>
+            </div>
+            <div id="detail-body"></div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+    function showToast(msg, type = '') {
+        const toast = document.getElementById('toast')
+        toast.textContent = msg
+        toast.className = 'toast show ' + type
+        setTimeout(() => toast.className = 'toast', 3000)
+    }
+
+    const sb = createSb()
+    let currentProfileId = null
+    let currentOwnerId = null
+
+    function getMonthRange(thangStr) {
+        const [year, mon] = thangStr.split('-').map(Number)
+        const startISO = thangStr + '-01T00:00:00'
+        const nextDate = new Date(year, mon, 1)
+        const nextYear = nextDate.getFullYear()
+        const nextMon = String(nextDate.getMonth() + 1).padStart(2, '0')
+        const endISO = nextYear + '-' + nextMon + '-01T00:00:00'
+        return { startISO, endISO }
+    }
+
+    function formatThang(thangStr) {
+        const [year, mon] = thangStr.split('-')
+        return 'Tháng ' + Number(mon) + '/' + year
+    }
+
+    function closeDetailModal() {
+        document.getElementById('detail-modal').style.display = 'none'
+    }
+
+    function openDetailModal(row, tong_luong_chuyen, tong_tam_ung, tong_hoan_ung, thuc_linh) {
+        document.getElementById('detail-title').textContent = formatThang(row.thang)
+        const body = document.getElementById('detail-body')
+        body.textContent = ''
+
+        const luong_cb = row.luong_co_ban_snapshot || 0
+        const ngay_lam = row.ngay_lam ?? 26
+        const luong_cung = Math.round(luong_cb / 26 * ngay_lam)
+
+        const table = document.createElement('table')
+        table.style.width = '100%'
+
+        const items = [
+            ['Lương cơ bản (snapshot)', formatMoney(luong_cb)],
+            ['Ngày làm', ngay_lam + ' / 26'],
+            ['Lương cứng', formatMoney(luong_cung)],
+            ['Tổng lương chuyến', formatMoney(tong_luong_chuyen)],
+            ['Phụ cấp', formatMoney(row.phu_cap || 0)],
+            ['Thưởng', formatMoney(row.thuong || 0)],
+            ['Tổng tạm ứng', '−' + formatMoney(tong_tam_ung)],
+            ['Tổng hoàn ứng', '+' + formatMoney(tong_hoan_ung)],
+            ['Khấu trừ', '−' + formatMoney(row.khau_tru || 0)]
+        ]
+
+        items.forEach(([label, val]) => {
+            const tr = document.createElement('tr')
+            const tdL = document.createElement('td')
+            tdL.textContent = label
+            tdL.style.cssText = 'padding:6px 0;color:var(--text-muted);font-size:0.9em'
+            const tdR = document.createElement('td')
+            tdR.textContent = val
+            tdR.style.cssText = 'padding:6px 0;text-align:right;font-weight:600'
+            tr.append(tdL, tdR)
+            table.appendChild(tr)
+        })
+
+        const divRow = document.createElement('tr')
+        const divTd = document.createElement('td')
+        divTd.colSpan = 2
+        divTd.style.cssText = 'border-top:2px solid var(--border);padding-top:4px'
+        divRow.appendChild(divTd)
+        table.appendChild(divRow)
+
+        const trTotal = document.createElement('tr')
+        const tdTL = document.createElement('td')
+        tdTL.textContent = 'THỰC LĨNH'
+        tdTL.style.cssText = 'padding:8px 0;font-weight:700;font-size:1.05em'
+        const tdTR = document.createElement('td')
+        tdTR.textContent = formatMoney(thuc_linh)
+        tdTR.style.cssText = 'padding:8px 0;text-align:right;font-weight:700;font-size:1.1em;color:' + (thuc_linh >= 0 ? 'var(--success)' : 'var(--danger)')
+        trTotal.append(tdTL, tdTR)
+        table.appendChild(trTotal)
+
+        body.appendChild(table)
+
+        if (row.ghi_chu) {
+            const p = document.createElement('p')
+            p.style.cssText = 'margin-top:12px;padding:8px;background:var(--bg);border-radius:var(--radius-sm);font-size:0.9em;color:var(--text)'
+            p.textContent = '📝 ' + row.ghi_chu
+            body.appendChild(p)
+        }
+
+        document.getElementById('detail-modal').style.display = 'flex'
+    }
+
+    function showNoPermission() {
+        const container = document.getElementById('main-content')
+        container.innerHTML = ''
+        const card = document.createElement('div')
+        card.style.cssText = 'background:#fdecea;border:1.5px solid var(--danger);border-radius:var(--radius);padding:24px;text-align:center;color:var(--danger);margin-top:12px'
+        card.textContent = 'Chủ xe chưa bật tính năng xem lương. Vui lòng liên hệ chủ xe.'
+        container.appendChild(card)
+    }
+
+    async function loadLuong() {
+        const container = document.getElementById('main-content')
+
+        const { data: rows, error } = await sb.from('luong_thang')
+            .select('*')
+            .eq('tai_xe_id', currentProfileId)
+            .order('thang', { ascending: false })
+        if (error) { showToast('Lỗi: ' + error.message, 'error'); return }
+
+        if (!rows || rows.length === 0) {
+            container.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:24px">Chưa có dữ liệu lương</p>'
+            return
+        }
+
+        const tripResults = await Promise.all(rows.map(row => {
+            const { startISO, endISO } = getMonthRange(row.thang)
+            return sb.from('trips').select('luong_chuyen, tam_ung, hoan_ung')
+                .eq('tai_xe_id', currentProfileId)
+                .eq('trang_thai', 'hoan_thanh')
+                .gte('ngay_ket_thuc', startISO)
+                .lt('ngay_ket_thuc', endISO)
+        }))
+
+        container.innerHTML = ''
+
+        rows.forEach((row, i) => {
+            const trips = tripResults[i]?.data || []
+            const tong_luong_chuyen = trips.reduce((s, t) => s + (Number(t.luong_chuyen) || 0), 0)
+            const tong_tam_ung = trips.reduce((s, t) => s + (Number(t.tam_ung) || 0), 0)
+            const tong_hoan_ung = trips.reduce((s, t) => s + (Number(t.hoan_ung) || 0), 0)
+
+            const luong_cb = row.luong_co_ban_snapshot || 0
+            const ngay_lam = row.ngay_lam ?? 26
+            const phu_cap = row.phu_cap || 0
+            const thuong = row.thuong || 0
+            const khau_tru = row.khau_tru || 0
+
+            const thuc_linh = Math.round(luong_cb / 26 * ngay_lam) + tong_luong_chuyen + phu_cap + thuong - tong_tam_ung + tong_hoan_ung - khau_tru
+
+            const card = document.createElement('div')
+            card.className = 'card'
+            card.style.marginBottom = '12px'
+
+            const header = document.createElement('div')
+            header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px'
+
+            const thangEl = document.createElement('h3')
+            thangEl.style.margin = '0'
+            thangEl.textContent = formatThang(row.thang)
+
+            const btnDetail = document.createElement('button')
+            btnDetail.className = 'btn btn-sm'
+            btnDetail.textContent = 'Chi tiết'
+            btnDetail.addEventListener('click', () => openDetailModal(row, tong_luong_chuyen, tong_tam_ung, tong_hoan_ung, thuc_linh))
+
+            header.append(thangEl, btnDetail)
+
+            const thucLinhEl = document.createElement('div')
+            thucLinhEl.style.cssText = 'font-size:1.4em;font-weight:700;color:' + (thuc_linh >= 0 ? 'var(--success)' : 'var(--danger)')
+            thucLinhEl.textContent = formatMoney(thuc_linh)
+
+            const sub = document.createElement('div')
+            sub.style.cssText = 'font-size:0.85em;color:var(--text-muted);margin-top:4px'
+            sub.textContent = 'Lương CB: ' + formatMoney(luong_cb) + ' · Chuyến: ' + formatMoney(tong_luong_chuyen)
+
+            card.append(header, thucLinhEl, sub)
+            container.appendChild(card)
+        })
+    }
+
+    async function logout() {
+        await sb.auth.signOut()
+        window.location.href = 'bai10.html'
+    }
+
+    async function initPage() {
+        const auth = await requireRole(sb, 'driver')
+        if (!auth) return
+        currentProfileId = auth.profile.id
+
+        const { data: userRow, error: uErr } = await sb.from('users').select('owner_id').eq('id', currentProfileId).maybeSingle()
+        if (uErr) { showToast('Lỗi: ' + uErr.message, 'error'); return }
+        currentOwnerId = userRow?.owner_id || null
+
+        if (!currentOwnerId) {
+            showNoPermission()
+            return
+        }
+
+        const { data: ownerRow, error: oErr } = await sb.from('users').select('cho_phep_xem_luong').eq('id', currentOwnerId).maybeSingle()
+        if (oErr) { showToast('Lỗi: ' + oErr.message, 'error'); return }
+
+        if (ownerRow?.cho_phep_xem_luong !== true) {
+            showNoPermission()
+            return
+        }
+
+        await loadLuong()
+    }
+
+    setupLogoutListener(sb)
+    initPage()
+    </script>
+</body>
+</html>

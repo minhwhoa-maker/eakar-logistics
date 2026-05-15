@@ -23,6 +23,7 @@
             <div class="form-row">
                 <input type="text" id="new-bien-so" placeholder="Biển số">
                 <input type="text" id="new-loai" placeholder="Loại xe">
+                <input type="text" id="new-luong-co-ban" placeholder="Lương cơ bản (VNĐ/tháng)">
                 <select id="new-tai-xe">
                     <option value="">-- Chọn tài xế --</option>
                 </select>
@@ -37,6 +38,7 @@
                         <tr>
                             <th>Biển số</th>
                             <th>Loại</th>
+                            <th>Lương cơ bản</th>
                             <th>Tài xế</th>
                             <th>Trạng thái</th>
                             <th>Hành động</th>
@@ -56,6 +58,15 @@
             toast.className = 'toast show ' + type;
             setTimeout(() => toast.className = 'toast', 3000);
         }
+
+        function addDotFormat(input) {
+            input.addEventListener('input', () => {
+                const raw = input.value.replace(/\D/g, '')
+                input.dataset.rawValue = raw
+                input.value = raw ? raw.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : ''
+            })
+        }
+
         const sb = createSb()
         let ownerProfileId = null
         let drivers = []
@@ -94,7 +105,7 @@
             tbody.textContent = ''
             const row = document.createElement('tr')
             const cell = document.createElement('td')
-            cell.colSpan = 5
+            cell.colSpan = 6
             cell.textContent = message
             row.appendChild(cell)
             tbody.appendChild(row)
@@ -130,6 +141,8 @@
             const bien_so = document.getElementById('new-bien-so').value.trim()
             const loai_xe = document.getElementById('new-loai').value.trim()
             const tai_xe_id = document.getElementById('new-tai-xe').value || null
+            const luongEl = document.getElementById('new-luong-co-ban')
+            const luong_co_ban = Number(luongEl.dataset.rawValue || luongEl.value.replace(/\./g, '')) || 0
 
             if (!bien_so) {
                 showToast('Vui lòng nhập biển số!', 'error')
@@ -159,13 +172,17 @@
                 bien_so,
                 loai_xe,
                 tai_xe_id,
-                trang_thai: tai_xe_id ? 'hoat_dong' : 'tam_nghi'
+                trang_thai: tai_xe_id ? 'hoat_dong' : 'tam_nghi',
+                luong_co_ban
             })
 
             if (error) showToast('Lỗi: ' + error.message, 'error')
             else {
                 document.getElementById('new-bien-so').value = ''
                 document.getElementById('new-loai').value = ''
+                const luongInput = document.getElementById('new-luong-co-ban')
+                luongInput.value = ''
+                luongInput.dataset.rawValue = ''
                 document.getElementById('new-tai-xe').value = ''
                 loadVehicles()
             }
@@ -198,7 +215,7 @@
             row.style.display = 'none'
 
             const cell = document.createElement('td')
-            cell.colSpan = 5
+            cell.colSpan = 6
             cell.style.padding = '0 12px 12px'
 
             const panel = document.createElement('div')
@@ -272,6 +289,7 @@
                     row.appendChild(plateCell)
 
                     addCell(row, v.loai_xe || '-')
+                    addCell(row, formatMoney(v.luong_co_ban || 0))
                     addCell(row, driver ? driver.full_name : '-')
 
                     const statusCell = document.createElement('td')
@@ -555,6 +573,7 @@
                 const formatted = formatBienSo(input.value.trim())
                 if (formatted) input.value = formatted
             })
+            addDotFormat(document.getElementById('new-luong-co-ban'))
         }
         setupLogoutListener(sb)
         init()

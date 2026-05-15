@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bảng lương</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="style.css">
+    <script src="shared.js"></script>
+</head>
+<body>
+    <div class="header">
+        <h2>💰 Bảng lương</h2>
+        <div style="display:flex;gap:10px">
+            <button class="btn" onclick="window.location.href='owner-dashboard.html'">← Dashboard</button>
+            <button class="btn" onclick="window.location.href='driver.html'">👥 Tài xế</button>
+            <button class="btn" onclick="window.location.href='vehicles.html'">🚛 Xe</button>
+            <button class="btn btn-logout" onclick="logout()">Đăng xuất</button>
+        </div>
+    </div>
+    <div class="container">
+        <div class="card">
+            <div class="notify-row">
+                <span>Cho phép tài xế xem lương</span>
+                <label class="toggle">
+                    <input type="checkbox" id="toggle-xem-luong" onchange="saveXemLuong(this.checked)">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+        </div>
+        <div class="card">
+            <div class="filter-bar">
+                <label>Tháng</label>
+                <input type="month" id="filter-month">
+                <button class="btn" onclick="loadLuong()">Xem</button>
+            </div>
+            <div class="table-scroll wide">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Tên tài xế</th>
+                            <th>Biển số xe</th>
+                            <th>Lương CB</th>
+                            <th>Ngày làm</th>
+                            <th>Σ chuyến</th>
+                            <th>Phụ cấp</th>
+                            <th>Thưởng</th>
+                            <th>Σ tạm ứng</th>
+                            <th>Σ hoàn ứng</th>
+                            <th>Khấu trừ</th>
+                            <th>THỰC LĨNH</th>
+                            <th>Sửa</th>
+                        </tr>
+                    </thead>
+                    <tbody id="luong-body">
+                        <tr><td colspan="12" style="text-align:center;color:var(--text-muted);padding:16px">Chọn tháng để xem</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+        <div style="background:var(--white);border-radius:var(--radius);padding:24px;width:380px;max-width:95%;max-height:90vh;overflow-y:auto;">
+            <h3 style="margin:0 0 16px" id="edit-modal-title">Chỉnh lương</h3>
+            <div class="form-group">
+                <label>Ngày làm (0–31)</label>
+                <input type="number" id="edit-ngay-lam" min="0" max="31">
+            </div>
+            <div class="form-group">
+                <label>Phụ cấp (đ)</label>
+                <input type="text" id="edit-phu-cap">
+            </div>
+            <div class="form-group">
+                <label>Thưởng (đ)</label>
+                <input type="text" id="edit-thuong">
+            </div>
+            <div class="form-group">
+                <label>Khấu trừ (đ)</label>
+                <input type="text" id="edit-khau-tru">
+            </div>
+            <div class="form-group">
+                <label>Ghi chú</label>
+                <input type="text" id="edit-ghi-chu">
+            </div>
+            <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
+                <button class="btn btn-gray" onclick="closeEditModal()">Hủy</button>
+                <button class="btn" onclick="saveEdit()">Lưu</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+    function showToast(msg, type = '') {
+        const toast = document.getElementById('toast')
+        toast.textContent = msg
+        toast.className = 'toast show ' + type
+        setTimeout(() => toast.className = 'toast', 3000)
+    }
+
+    function addDotFormat(input) {
+        input.addEventListener('input', () => {
+            const raw = input.value.replace(/\D/g, '')
+            input.dataset.rawValue = raw
+            input.value = raw ? raw.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : ''
+        })
+    }
+
+    function setMoneyInput(input, value) {
+        const v = Number(value) || 0
+        if (v === 0) {
+            input.value = ''
+            input.dataset.rawValue = ''
+        } else {
+            input.dataset.rawValue = String(v)
+            input.value = String(v).replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+        }
+    }
+
+    function readMoneyInput(input) {
+        return Number(input.dataset.rawValue || input.value.replace(/\./g, '')) || 0
+    }
+
+    const sb = createSb()
+    let ownerProfileId = null
+    let editingRowId = null
+
+    function getVNMonth() {
+        const d = new Date(Date.now() + 7 * 60 * 60 * 1000)
+        return d.toISOString().slice(0, 7)
+    }
+
+    function getMonthRange(thangStr) {
+        const [year, mon] = thangStr.split('-').map(Number)
+        const startISO = thangStr + '-01T00:00:00'
+        const nextDate = new Date(year, mon, 1)
+        const nextYear = nextDate.getFullYear()
+        const nextMon = String(nextDate.getMonth() + 1).padStart(2, '0')
+        const endISO = nextYear + '-' + nextMon + '-01T00:00:00'
+        return { startISO, endISO }
+    }
+
+    async function loadXemLuongToggle() {
+        const { data } = await sb.from('users').select('cho_phep_xem_luong').eq('id', ownerProfileId).maybeSingle()
+        document.getElementById('toggle-xem-luong').checked = data?.cho_phep_xem_luong === true
+    }
+
+    async function saveXemLuong(value) {
+        const { error } = await sb.from('users').update({ cho_phep_xem_luong: value }).eq('id', ownerProfileId)
+        if (error) showToast('Lỗi lưu cài đặt: ' + error.message, 'error')
+    }
+
+    async function loadLuong() {
+        const thangStr = document.getElementById('filter-month').value
+        if (!thangStr) { showToast('Vui lòng chọn tháng', 'error'); return }
+
+        const tbody = document.getElementById('luong-body')
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--text-muted);padding:16px">Đang tải...</td></tr>'
+
+        const { data: drivers, error: drErr } = await sb.from('users')
+            .select('id, full_name')
+            .eq('owner_id', ownerProfileId)
+            .eq('role', 'driver')
+        if (drErr) { showToast('Lỗi: ' + drErr.message, 'error'); return }
+        if (!drivers || drivers.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--text-muted);padding:16px">Chưa có tài xế nào</td></tr>'
+            return
+        }
+
+        const xeResults = await Promise.all(
+            drivers.map(d => sb.from('xe').select('id, bien_so, luong_co_ban').eq('tai_xe_id', d.id).maybeSingle())
+        )
+
+        const { data: luongRows, error: ltErr } = await sb.from('luong_thang')
+            .select('*')
+            .eq('owner_id', ownerProfileId)
+            .eq('thang', thangStr)
+        if (ltErr) { showToast('Lỗi: ' + ltErr.message, 'error'); return }
+
+        const luongMap = {}
+        if (luongRows) luongRows.forEach(r => { luongMap[r.tai_xe_id] = r })
+
+        const inserts = []
+        drivers.forEach((d, i) => {
+            if (!luongMap[d.id]) {
+                const xe = xeResults[i]?.data
+                inserts.push(
+                    sb.from('luong_thang').insert({
+                        owner_id: ownerProfileId,
+                        tai_xe_id: d.id,
+                        thang: thangStr,
+                        luong_co_ban_snapshot: xe?.luong_co_ban || 0,
+                        ngay_lam: 26,
+                        phu_cap: 0,
+                        thuong: 0,
+                        khau_tru: 0
+                    }).select('*').single()
+                )
+            }
+        })
+
+        if (inserts.length > 0) {
+            const insertResults = await Promise.all(inserts)
+            insertResults.forEach(r => {
+                if (r.data) luongMap[r.data.tai_xe_id] = r.data
+                if (r.error) console.error('Insert luong_thang error:', r.error)
+            })
+        }
+
+        const { startISO, endISO } = getMonthRange(thangStr)
+        const tripResults = await Promise.all(
+            drivers.map(d =>
+                sb.from('trips').select('luong_chuyen, tam_ung, hoan_ung')
+                    .eq('tai_xe_id', d.id)
+                    .eq('trang_thai', 'hoan_thanh')
+                    .gte('ngay_ket_thuc', startISO)
+                    .lt('ngay_ket_thuc', endISO)
+            )
+        )
+
+        tbody.innerHTML = ''
+        drivers.forEach((d, i) => {
+            const xe = xeResults[i]?.data
+            const row = luongMap[d.id]
+            const trips = tripResults[i]?.data || []
+
+            const tong_luong_chuyen = trips.reduce((s, t) => s + (Number(t.luong_chuyen) || 0), 0)
+            const tong_tam_ung = trips.reduce((s, t) => s + (Number(t.tam_ung) || 0), 0)
+            const tong_hoan_ung = trips.reduce((s, t) => s + (Number(t.hoan_ung) || 0), 0)
+
+            const luong_cb = row?.luong_co_ban_snapshot || 0
+            const ngay_lam = row?.ngay_lam ?? 26
+            const phu_cap = row?.phu_cap || 0
+            const thuong = row?.thuong || 0
+            const khau_tru = row?.khau_tru || 0
+
+            const thuc_linh = Math.round(luong_cb / 26 * ngay_lam) + tong_luong_chuyen + phu_cap + thuong - tong_tam_ung + tong_hoan_ung - khau_tru
+
+            const tr = document.createElement('tr')
+            const cellValues = [
+                d.full_name || '-',
+                xe ? formatBienSo(xe.bien_so) : '—',
+                formatMoney(luong_cb),
+                String(ngay_lam),
+                formatMoney(tong_luong_chuyen),
+                formatMoney(phu_cap),
+                formatMoney(thuong),
+                formatMoney(tong_tam_ung),
+                formatMoney(tong_hoan_ung),
+                formatMoney(khau_tru),
+                formatMoney(thuc_linh)
+            ]
+
+            cellValues.forEach((val, idx) => {
+                const td = document.createElement('td')
+                td.textContent = val
+                if (idx === 10) {
+                    td.style.fontWeight = '700'
+                    td.style.color = thuc_linh >= 0 ? 'var(--success)' : 'var(--danger)'
+                }
+                tr.appendChild(td)
+            })
+
+            const editTd = document.createElement('td')
+            const editBtn = document.createElement('button')
+            editBtn.className = 'btn btn-sm btn-warning'
+            editBtn.textContent = 'Sửa'
+            editBtn.addEventListener('click', () => openEditModal(row, d.full_name))
+            editTd.appendChild(editBtn)
+            tr.appendChild(editTd)
+
+            tbody.appendChild(tr)
+        })
+    }
+
+    function openEditModal(row, driverName) {
+        if (!row) { showToast('Không tìm thấy dữ liệu lương', 'error'); return }
+        editingRowId = row.id
+        document.getElementById('edit-modal-title').textContent = 'Chỉnh lương: ' + (driverName || '')
+        document.getElementById('edit-ngay-lam').value = row.ngay_lam ?? 26
+        setMoneyInput(document.getElementById('edit-phu-cap'), row.phu_cap)
+        setMoneyInput(document.getElementById('edit-thuong'), row.thuong)
+        setMoneyInput(document.getElementById('edit-khau-tru'), row.khau_tru)
+        document.getElementById('edit-ghi-chu').value = row.ghi_chu || ''
+        document.getElementById('edit-modal').style.display = 'flex'
+    }
+
+    function closeEditModal() {
+        document.getElementById('edit-modal').style.display = 'none'
+        editingRowId = null
+    }
+
+    async function saveEdit() {
+        if (!editingRowId) return
+        const ngay_lam = Math.max(0, Math.min(31, Number(document.getElementById('edit-ngay-lam').value) || 0))
+        const phu_cap = readMoneyInput(document.getElementById('edit-phu-cap'))
+        const thuong = readMoneyInput(document.getElementById('edit-thuong'))
+        const khau_tru = readMoneyInput(document.getElementById('edit-khau-tru'))
+        const ghi_chu = document.getElementById('edit-ghi-chu').value.trim() || null
+
+        const { error } = await sb.from('luong_thang')
+            .update({ ngay_lam, phu_cap, thuong, khau_tru, ghi_chu })
+            .eq('id', editingRowId)
+        if (error) { showToast('Lỗi: ' + error.message, 'error'); return }
+        closeEditModal()
+        showToast('Đã lưu', 'success')
+        loadLuong()
+    }
+
+    async function logout() {
+        await sb.auth.signOut()
+        window.location.href = 'bai10.html'
+    }
+
+    async function initPage() {
+        const auth = await requireRole(sb, 'owner')
+        if (!auth) return
+        ownerProfileId = auth.profile.id
+
+        addDotFormat(document.getElementById('edit-phu-cap'))
+        addDotFormat(document.getElementById('edit-thuong'))
+        addDotFormat(document.getElementById('edit-khau-tru'))
+
+        await loadXemLuongToggle()
+        document.getElementById('filter-month').value = getVNMonth()
+        await loadLuong()
+    }
+
+    setupLogoutListener(sb)
+    initPage()
+    </script>
+</body>
+</html>
