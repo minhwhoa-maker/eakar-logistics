@@ -28,6 +28,16 @@
                     <option value="">-- Chọn tài xế --</option>
                 </select>
             </div>
+            <div class="form-row" style="align-items:center">
+                <select id="new-cach-tinh-luong" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:15px;color:#1a1a2e;background:white">
+                    <option value="khoan_chuyen">Khoán chuyến</option>
+                    <option value="phan_tram_doanh_thu">% Doanh thu</option>
+                </select>
+                <div style="display:flex;align-items:center;gap:6px;flex:1">
+                    <input type="text" id="new-gia-tri-luong" placeholder="Giá trị" style="flex:1">
+                    <span id="new-gia-tri-suffix" style="color:var(--text-muted);font-size:14px;white-space:nowrap">đ</span>
+                </div>
+            </div>
             <button class="btn" onclick="addVehicle()">+ Thêm xe</button>
         </div>
         <div class="card">
@@ -39,6 +49,8 @@
                             <th>Biển số</th>
                             <th>Loại</th>
                             <th>Lương cơ bản</th>
+                            <th>Cách tính lương</th>
+                            <th>Giá trị</th>
                             <th>Tài xế</th>
                             <th>Trạng thái</th>
                             <th>Hành động</th>
@@ -105,7 +117,7 @@
             tbody.textContent = ''
             const row = document.createElement('tr')
             const cell = document.createElement('td')
-            cell.colSpan = 6
+            cell.colSpan = 8
             cell.textContent = message
             row.appendChild(cell)
             tbody.appendChild(row)
@@ -143,9 +155,16 @@
             const tai_xe_id = document.getElementById('new-tai-xe').value || null
             const luongEl = document.getElementById('new-luong-co-ban')
             const luong_co_ban = Number(luongEl.dataset.rawValue || luongEl.value.replace(/\./g, '')) || 0
+            const cach_tinh_luong = document.getElementById('new-cach-tinh-luong').value || 'khoan_chuyen'
+            const giaTriEl = document.getElementById('new-gia-tri-luong')
+            const gia_tri_luong = Number(giaTriEl.dataset.rawValue || giaTriEl.value.replace(/\./g, '')) || 0
 
             if (!bien_so) {
                 showToast('Vui lòng nhập biển số!', 'error')
+                return
+            }
+            if (cach_tinh_luong === 'phan_tram_doanh_thu' && (gia_tri_luong < 0 || gia_tri_luong > 100)) {
+                showToast('% lương phải từ 0 đến 100', 'error')
                 return
             }
 
@@ -173,7 +192,9 @@
                 loai_xe,
                 tai_xe_id,
                 trang_thai: tai_xe_id ? 'hoat_dong' : 'tam_nghi',
-                luong_co_ban
+                luong_co_ban,
+                cach_tinh_luong,
+                gia_tri_luong
             })
 
             if (error) showToast('Lỗi: ' + error.message, 'error')
@@ -184,6 +205,11 @@
                 luongInput.value = ''
                 luongInput.dataset.rawValue = ''
                 document.getElementById('new-tai-xe').value = ''
+                document.getElementById('new-cach-tinh-luong').value = 'khoan_chuyen'
+                const giaTriResetEl = document.getElementById('new-gia-tri-luong')
+                giaTriResetEl.value = ''
+                giaTriResetEl.dataset.rawValue = ''
+                document.getElementById('new-gia-tri-suffix').textContent = 'đ'
                 loadVehicles()
             }
         }
@@ -215,7 +241,7 @@
             row.style.display = 'none'
 
             const cell = document.createElement('td')
-            cell.colSpan = 6
+            cell.colSpan = 8
             cell.style.padding = '0 12px 12px'
 
             const panel = document.createElement('div')
@@ -290,6 +316,63 @@
 
                     addCell(row, v.loai_xe || '-')
                     addCell(row, formatMoney(v.luong_co_ban || 0))
+
+                    // Cách tính lương
+                    const luongTypeCell = document.createElement('td')
+                    const luongTypeSelect = document.createElement('select')
+                    luongTypeSelect.style.cssText = 'width:140px;padding:6px 8px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px;color:#1a1a2e;background:white'
+                    ;[['khoan_chuyen', 'Khoán chuyến'], ['phan_tram_doanh_thu', '% Doanh thu']].forEach(([val, text]) => {
+                        const opt = document.createElement('option')
+                        opt.value = val
+                        opt.textContent = text
+                        if (val === (v.cach_tinh_luong || 'khoan_chuyen')) opt.selected = true
+                        luongTypeSelect.appendChild(opt)
+                    })
+                    luongTypeCell.appendChild(luongTypeSelect)
+                    row.appendChild(luongTypeCell)
+
+                    // Giá trị
+                    const giaTriCell = document.createElement('td')
+                    const giaTriWrap = document.createElement('div')
+                    giaTriWrap.style.cssText = 'display:flex;align-items:center;gap:4px'
+                    const giaTriInput = document.createElement('input')
+                    giaTriInput.type = 'text'
+                    giaTriInput.style.cssText = 'width:90px;padding:6px 8px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px'
+                    const giaTriSuffix = document.createElement('span')
+                    giaTriSuffix.style.cssText = 'color:var(--text-muted);font-size:13px'
+                    const initMode = v.cach_tinh_luong || 'khoan_chuyen'
+                    const rawVal = String(v.gia_tri_luong || 0)
+                    giaTriInput.dataset.rawValue = rawVal
+                    if (initMode === 'khoan_chuyen') {
+                        giaTriInput.value = rawVal.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+                        giaTriSuffix.textContent = 'đ'
+                    } else {
+                        giaTriInput.value = rawVal
+                        giaTriSuffix.textContent = '%'
+                    }
+                    addDotFormat(giaTriInput)
+                    luongTypeSelect.addEventListener('change', async () => {
+                        const newMode = luongTypeSelect.value
+                        giaTriInput.value = ''
+                        giaTriInput.dataset.rawValue = ''
+                        giaTriSuffix.textContent = newMode === 'khoan_chuyen' ? 'đ' : '%'
+                        const { error } = await sb.from('xe').update({ cach_tinh_luong: newMode, gia_tri_luong: 0 }).eq('id', v.id)
+                        if (error) showToast('Lỗi: ' + error.message, 'error')
+                    })
+                    giaTriInput.addEventListener('blur', async () => {
+                        const raw = giaTriInput.dataset.rawValue || giaTriInput.value.replace(/\./g, '')
+                        const val = Number(raw) || 0
+                        if (luongTypeSelect.value === 'phan_tram_doanh_thu' && (val < 0 || val > 100)) {
+                            showToast('% lương phải từ 0 đến 100', 'error')
+                            return
+                        }
+                        const { error } = await sb.from('xe').update({ gia_tri_luong: val }).eq('id', v.id)
+                        if (error) showToast('Lỗi: ' + error.message, 'error')
+                    })
+                    giaTriWrap.append(giaTriInput, giaTriSuffix)
+                    giaTriCell.appendChild(giaTriWrap)
+                    row.appendChild(giaTriCell)
+
                     addCell(row, driver ? driver.full_name : '-')
 
                     const statusCell = document.createElement('td')
@@ -574,6 +657,14 @@
                 if (formatted) input.value = formatted
             })
             addDotFormat(document.getElementById('new-luong-co-ban'))
+            addDotFormat(document.getElementById('new-gia-tri-luong'))
+            document.getElementById('new-cach-tinh-luong').addEventListener('change', () => {
+                const mode = document.getElementById('new-cach-tinh-luong').value
+                const el = document.getElementById('new-gia-tri-luong')
+                el.value = ''
+                el.dataset.rawValue = ''
+                document.getElementById('new-gia-tri-suffix').textContent = mode === 'khoan_chuyen' ? 'đ' : '%'
+            })
         }
         setupLogoutListener(sb)
         init()

@@ -278,10 +278,13 @@
             container.appendChild(p)
             return
         }
-        data.forEach(trip => container.appendChild(buildTripCard(trip)))
+        for (const trip of data) {
+            const card = await buildTripCard(trip)
+            container.appendChild(card)
+        }
     }
 
-    function buildTripCard(trip) {
+    async function buildTripCard(trip) {
         const card = document.createElement('div')
         card.className = 'card'
         card.dataset.tripId = trip.id
@@ -344,8 +347,9 @@
         const expenseList = document.createElement('div')
         expenseList.id = 'expenses-' + trip.id
 
+        const { data: xeConfig } = await sb.from('xe').select('cach_tinh_luong, gia_tri_luong').eq('id', currentXeId).maybeSingle()
         const addExpForm = buildAddExpenseForm(trip.id)
-        const completeForm = buildCompleteForm(trip.id)
+        const completeForm = buildCompleteForm(trip.id, xeConfig)
 
         card.append(title, startEl, chiPhiEl, btnBar, expenseList, addExpForm, completeForm)
         loadExpenses(trip.id)
@@ -711,7 +715,14 @@
     }
 
     // ── Complete Form ─────────────────────────────────────────────────
-    function buildCompleteForm(tripId) {
+    function calcLuongChuyen(xeConfig, doanhThu) {
+        if (!xeConfig) return 0
+        if (xeConfig.cach_tinh_luong === 'khoan_chuyen') return xeConfig.gia_tri_luong || 0
+        if (xeConfig.cach_tinh_luong === 'phan_tram_doanh_thu') return Math.round((doanhThu || 0) * (xeConfig.gia_tri_luong || 0) / 100)
+        return 0
+    }
+
+    function buildCompleteForm(tripId, xeConfig) {
         const wrap = document.createElement('div')
         wrap.setAttribute('data-form-id', 'complete-' + tripId)
         wrap.style.cssText = 'display:none;border-top:1px solid var(--border);padding-top:12px;margin-top:4px'
@@ -729,7 +740,7 @@
             i.type = 'number'
             i.setAttribute('data-field', fieldName)
             g.append(l, i)
-            const MONEY_FIELDS = ['doanh_thu', 'luong_chuyen', 'tam_ung', 'hoan_ung']
+            const MONEY_FIELDS = ['doanh_thu', 'tam_ung', 'hoan_ung']
             if (MONEY_FIELDS.includes(fieldName)) addMoneyHint(i)
             return g
         }
@@ -739,17 +750,32 @@
         const btnConfirm = document.createElement('button')
         btnConfirm.className = 'btn btn-success'
         btnConfirm.textContent = 'Xác nhận hoàn thành'
-        btnConfirm.onclick = () => submitComplete(tripId)
+        btnConfirm.onclick = () => submitComplete(tripId, xeConfig)
         const btnCancel = document.createElement('button')
         btnCancel.className = 'btn btn-gray'
         btnCancel.textContent = 'Hủy'
         btnCancel.onclick = closeActiveForm
         btnRow.append(btnConfirm, btnCancel)
 
+        const doanhThuGroup = field('Doanh thu thực tế (đ)', 'doanh_thu')
+        const luongPreview = document.createElement('div')
+        luongPreview.style.cssText = 'font-size:0.9em;color:var(--text-muted);padding:4px 0 8px'
+        const luongPreviewSpan = document.createElement('span')
+        luongPreviewSpan.id = 'luong-preview-' + tripId
+        luongPreviewSpan.textContent = formatMoney(calcLuongChuyen(xeConfig, 0))
+        luongPreview.append('Lương chuyến (tự tính): ', luongPreviewSpan)
+        if (xeConfig && xeConfig.cach_tinh_luong === 'phan_tram_doanh_thu') {
+            const doanhThuInput = doanhThuGroup.querySelector('[data-field="doanh_thu"]')
+            doanhThuInput.addEventListener('input', () => {
+                const rawVal = doanhThuInput.dataset.rawValue || doanhThuInput.value.replace(/\./g, '')
+                luongPreviewSpan.textContent = formatMoney(calcLuongChuyen(xeConfig, Number(rawVal) || 0))
+            })
+        }
+
         wrap.append(
             h4,
-            field('Doanh thu thực tế (đ)', 'doanh_thu'),
-            field('Lương chuyến (đ)', 'luong_chuyen'),
+            doanhThuGroup,
+            luongPreview,
             field('Tạm ứng (đ)', 'tam_ung'),
             field('Hoàn ứng (đ)', 'hoan_ung'),
             btnRow
@@ -757,7 +783,7 @@
         return wrap
     }
 
-    async function submitComplete(tripId) {
+    async function submitComplete(tripId, xeConfig) {
         const form = document.querySelector(`[data-form-id="complete-${tripId}"]`)
         const dtEl = form.querySelector('[data-field="doanh_thu"]')
         const dtVal = dtEl.dataset.rawValue || dtEl.value
@@ -766,7 +792,7 @@
             showToast('Vui lòng nhập doanh thu thực tế', 'error')
             return
         }
-        const luong_chuyen = Number(form.querySelector('[data-field="luong_chuyen"]').dataset.rawValue || form.querySelector('[data-field="luong_chuyen"]').value) || 0
+        const luong_chuyen = calcLuongChuyen(xeConfig, doanh_thu)
         const tam_ung      = Number(form.querySelector('[data-field="tam_ung"]').dataset.rawValue || form.querySelector('[data-field="tam_ung"]').value) || 0
         const hoan_ung     = Number(form.querySelector('[data-field="hoan_ung"]').dataset.rawValue || form.querySelector('[data-field="hoan_ung"]').value) || 0
         const btn = form.querySelector('.btn-success')
