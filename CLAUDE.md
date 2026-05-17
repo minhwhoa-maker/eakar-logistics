@@ -86,6 +86,7 @@ Khi user case (b) login lần đầu, bai10 thấy email đã có → skip inser
 - Bảng nhiều cột bọc trong `<div class="table-scroll wide">` để mobile scroll ngang.
 - Toggle switch notify settings: `.notify-row` (flex row), `.toggle` (label wrapper), `.toggle-slider` (pseudo-element track/thumb). Checked state: `--success` green. Đã có trong `style.css`.
 - All asset links dùng **relative path** (`manifest.json`, `style.css`, `sw.js`, `shared.js`) — không có leading `/`.
+- **Mobile header pattern** (≤600px): mọi page dùng `<h2>emoji <span class="header-text">Tên trang</span></h2>` — `.header-text` bị ẩn trên mobile qua `style.css`. Buttons nhóm trong `<div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">`. `style.css` có `@media (max-width:600px)` override padding/font-size cho `.header`, `.header h2`, `.header > div`, `.header .btn`/`.btn-logout` — **không cần thêm local `<style>` block** trong từng page cho mobile header.
 
 ### Notification pattern (showToast)
 Tất cả page admin/driver dùng `showToast()` cho user feedback. Mỗi file tự định nghĩa hàm này ở đầu `<script>` (không phải trong `shared.js`) và cần `<div class="toast" id="toast"></div>` trước `</body>`:
