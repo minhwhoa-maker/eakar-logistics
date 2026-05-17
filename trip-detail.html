@@ -10,9 +10,11 @@
 </head>
 <body>
     <div class="header">
-        <button class="btn btn-gray btn-sm" onclick="goBack()">← Quay lại</button>
-        <h2>Chi tiết chuyến</h2>
-        <button class="btn btn-logout" onclick="logout()">Đăng xuất</button>
+        <h2>📋 <span class="header-text">Chi tiết chuyến</span></h2>
+        <div style="display:flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end;">
+            <button class="btn btn-gray btn-sm" onclick="goBack()">← Quay lại</button>
+            <button class="btn btn-logout" onclick="logout()">Đăng xuất</button>
+        </div>
     </div>
     <div class="container">
         <div id="trip-info"></div>

@@ -666,3 +666,32 @@ tr:hover td { background: #f9f9fc; }
     #chat-fab { bottom: 20px; right: 16px; }
     .chat-suggest button { font-size: 0.72rem; padding: 4px 10px; }
 }
+
+@media (max-width: 600px) {
+    .header {
+        padding: 12px 16px !important;
+        gap: 8px !important;
+    }
+    .header h2 {
+        font-size: 1em !important;
+        margin: 0 !important;
+        flex-shrink: 1;
+        min-width: 0;
+    }
+    .header .header-text {
+        display: none;
+    }
+    .header > div {
+        gap: 6px !important;
+        flex-wrap: nowrap !important;
+        justify-content: flex-end;
+        overflow-x: auto;
+    }
+    .header .btn,
+    .header .btn-logout {
+        padding: 6px 10px !important;
+        font-size: 12px !important;
+        white-space: nowrap !important;
+        flex-shrink: 0;
+    }
+}
