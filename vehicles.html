@@ -82,6 +82,8 @@
         const sb = createSb()
         let ownerProfileId = null
         let drivers = []
+        let currentMaintXeId = null
+        let maintModalChiPhiInitialized = false
 
         const statusLabels = {
             hoat_dong: '🟢 Hoạt động',
@@ -243,73 +245,6 @@
             'Thay dầu hộp số', 'Bảo dưỡng điều hòa', 'Đăng kiểm', 'Bảo hiểm'
         ]
 
-        function buildMaintenanceRow(vehicleId, bienSo) {
-            const today = new Date().toISOString().split('T')[0]
-            const row = document.createElement('tr')
-            row.id = 'maint-row-' + vehicleId
-            row.style.display = 'none'
-
-            const cell = document.createElement('td')
-            cell.colSpan = 8
-            cell.style.padding = '0 12px 12px'
-
-            const panel = document.createElement('div')
-            panel.className = 'maintenance-panel'
-
-            const title = document.createElement('h4')
-            title.textContent = '🔧 Bảo dưỡng xe ' + bienSo
-
-            const formRow = document.createElement('div')
-            formRow.className = 'form-row'
-
-            const dateInput = document.createElement('input')
-            dateInput.type = 'date'
-            dateInput.id = 'maint-ngay-' + vehicleId
-            dateInput.value = today
-
-            const typeSelect = document.createElement('select')
-            typeSelect.id = 'maint-loai-' + vehicleId
-            maintenanceTypes.forEach(([value, label]) => {
-                const option = document.createElement('option')
-                option.value = value
-                option.textContent = label
-                typeSelect.appendChild(option)
-            })
-
-            const descInput = document.createElement('input')
-            descInput.type = 'text'
-            descInput.id = 'maint-mota-' + vehicleId
-            descInput.placeholder = 'Mô tả'
-
-            const costInput = document.createElement('input')
-            costInput.type = 'number'
-            costInput.id = 'maint-chiphi-' + vehicleId
-            costInput.placeholder = 'Chi phí (VNĐ)'
-
-            const bophanInput = document.createElement('input')
-            bophanInput.type = 'text'
-            bophanInput.id = 'maint-bophan-' + vehicleId
-            bophanInput.placeholder = 'Bộ phận (vd: lốp trước trái)'
-            bophanInput.setAttribute('list', 'bophan-suggestions-' + vehicleId)
-
-            const bophanList = document.createElement('datalist')
-            bophanList.id = 'bophan-suggestions-' + vehicleId
-
-            const nextDateInput = document.createElement('input')
-            nextDateInput.type = 'date'
-            nextDateInput.id = 'maint-ngaytiep-' + vehicleId
-            nextDateInput.placeholder = 'Ngày tiếp theo (tuỳ chọn)'
-
-            const addButton = createButton('+ Thêm', 'btn btn-success', () => addMaintenance(vehicleId))
-            const history = document.createElement('div')
-            history.id = 'maint-history-' + vehicleId
-
-            formRow.append(dateInput, typeSelect, descInput, bophanInput, costInput, nextDateInput, addButton)
-            panel.append(title, formRow, bophanList, history)
-            cell.appendChild(panel)
-            row.appendChild(cell)
-            return row
-        }
 
         async function loadVehicles() {
             try {
@@ -441,7 +376,7 @@
                     actions.style.flexWrap = 'wrap'
                     actions.append(
                         createButton('Đổi TT', 'btn', () => changeStatus(v.id, v.trang_thai, v.tai_xe_id)),
-                        createButton('🔧 Bảo dưỡng', 'btn btn-warning', () => toggleMaintenance(v.id)),
+                        createButton('🔧 Bảo dưỡng', 'btn btn-warning', () => openMaintenanceModal(v.id, v.bien_so || '')),
                         createButton('📋 Chuyến', 'btn btn-success', () => openTripsModal(v.id, v.bien_so || '')),
                         createButton('Xóa', 'btn btn-danger', () => deleteVehicle(v.id, v.bien_so || ''))
                     )
@@ -449,23 +384,11 @@
                     row.appendChild(actionCell)
 
                     tbody.appendChild(row)
-                    tbody.appendChild(buildMaintenanceRow(v.id, v.bien_so || ''))
                 })
             } catch (err) {
                 console.error('Load vehicles error:', err)
                 setVehicleMessage('Không thể tải dữ liệu xe')
                 showToast('Lỗi: ' + err.message, 'error')
-            }
-        }
-
-        function toggleMaintenance(xeId) {
-            const row = document.getElementById('maint-row-' + xeId)
-            if (!row) return
-            if (row.style.display === 'none') {
-                row.style.display = ''
-                loadMaintenance(xeId)
-            } else {
-                row.style.display = 'none'
             }
         }
 
@@ -478,25 +401,47 @@
             container.appendChild(p)
         }
 
-        async function loadMaintenance(xeId) {
-            const container = document.getElementById('maint-history-' + xeId)
-            if (!container) return
-            setMaintenanceMessage(container, 'Đang tải...')
+        function openMaintenanceModal(xeId, bienSo) {
+            currentMaintXeId = xeId
+            document.getElementById('maint-modal-title').textContent = '🔧 Bảo dưỡng xe ' + (bienSo ? formatBienSo(bienSo) : '')
+            const today = new Date().toISOString().split('T')[0]
+            document.getElementById('maint-modal-ngay').value = today
+            document.getElementById('maint-modal-bophan').value = ''
+            document.getElementById('maint-modal-loai').value = maintenanceTypes[0][0]
+            document.getElementById('maint-modal-mota').value = ''
+            const chiPhiEl = document.getElementById('maint-modal-chiphi')
+            chiPhiEl.value = ''
+            chiPhiEl.dataset.rawValue = ''
+            document.getElementById('maint-modal-ngaytiep').value = ''
+            if (!maintModalChiPhiInitialized) {
+                addDotFormat(document.getElementById('maint-modal-chiphi'))
+                maintModalChiPhiInitialized = true
+            }
+            document.getElementById('maintenance-modal').style.display = 'flex'
+            loadMaintenanceModal()
+        }
+
+        function closeMaintenanceModal() {
+            document.getElementById('maintenance-modal').style.display = 'none'
+            currentMaintXeId = null
+        }
+
+        async function loadMaintenanceModal() {
+            const xeId = currentMaintXeId
+            if (!xeId) return
+            const historyContainer = document.getElementById('maint-modal-history')
+            if (!historyContainer) return
+            setMaintenanceMessage(historyContainer, 'Đang tải...')
 
             const { data, error } = await sb.from('bao_duong').select('*').eq('owner_id', ownerProfileId).eq('xe_id', xeId).order('ngay', { ascending: false })
             if (error) {
-                setMaintenanceMessage(container, 'Không thể tải lịch sử bảo dưỡng')
+                setMaintenanceMessage(historyContainer, 'Không thể tải lịch sử bảo dưỡng')
                 showToast('Lỗi: ' + error.message, 'error')
                 return
             }
 
-            if (!data || data.length === 0) {
-                setMaintenanceMessage(container, 'Chưa có lịch sử bảo dưỡng')
-                return
-            }
-
-            const uniqueParts = [...new Set([...data.map(m => m.bo_phan).filter(Boolean), ...PRESET_PARTS])]
-            const datalist = document.getElementById('bophan-suggestions-' + xeId)
+            const uniqueParts = [...new Set([...(data || []).map(m => m.bo_phan).filter(Boolean), ...PRESET_PARTS])]
+            const datalist = document.getElementById('maint-modal-bophan-list')
             if (datalist) {
                 datalist.textContent = ''
                 uniqueParts.forEach(part => {
@@ -506,15 +451,9 @@
                 })
             }
 
-            const loaiLabels = Object.fromEntries(maintenanceTypes)
-            const dataParts = [...new Set(data.map(m => m.bo_phan).filter(Boolean))]
-
-            container.textContent = ''
-
-            const filterWrap = document.createElement('div')
-            filterWrap.style.marginTop = '8px'
-            const filterSelect = document.createElement('select')
-            filterSelect.style.cssText = 'padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px;color:#1a1a2e;background:white'
+            const dataParts = [...new Set((data || []).map(m => m.bo_phan).filter(Boolean))]
+            const filterSelect = document.getElementById('maint-modal-filter')
+            filterSelect.textContent = ''
             const allOpt = document.createElement('option')
             allOpt.value = ''
             allOpt.textContent = 'Tất cả'
@@ -525,11 +464,17 @@
                 opt.textContent = part
                 filterSelect.appendChild(opt)
             })
-            filterWrap.appendChild(filterSelect)
-            container.appendChild(filterWrap)
+
+            if (!data || data.length === 0) {
+                setMaintenanceMessage(historyContainer, 'Chưa có lịch sử bảo dưỡng')
+                return
+            }
+
+            const loaiLabels = Object.fromEntries(maintenanceTypes)
+            historyContainer.textContent = ''
 
             const tableContainer = document.createElement('div')
-            container.appendChild(tableContainer)
+            historyContainer.appendChild(tableContainer)
 
             function renderTable(filtered) {
                 tableContainer.textContent = ''
@@ -537,7 +482,7 @@
                 table.style.marginTop = '12px'
                 const thead = document.createElement('thead')
                 const headRow = document.createElement('tr')
-                const headers = ['Ngày', 'Loại', 'Bộ phận', 'Mô tả', 'Chi phí', '']
+                const headers = ['Ngày', 'Bộ phận', 'Loại', 'Mô tả', 'Chi phí', '']
                 headers.forEach(label => {
                     const th = document.createElement('th')
                     th.textContent = label
@@ -548,12 +493,12 @@
                 filtered.forEach(m => {
                     const row = document.createElement('tr')
                     addCell(row, formatDate(m.ngay))
-                    addCell(row, loaiLabels[m.loai] || m.loai || '-')
                     addCell(row, m.bo_phan || '-')
+                    addCell(row, loaiLabels[m.loai] || m.loai || '-')
                     addCell(row, m.mo_ta || '-')
                     addCell(row, m.chi_phi === null || m.chi_phi === undefined ? '-' : formatMoney(m.chi_phi))
                     const actionCell = document.createElement('td')
-                    const deleteButton = createButton('Xóa', 'btn btn-danger', () => deleteMaintenance(m.id, xeId))
+                    const deleteButton = createButton('Xóa', 'btn btn-danger', () => deleteMaintenanceModal(m.id))
                     deleteButton.style.padding = '4px 8px'
                     deleteButton.style.fontSize = '12px'
                     actionCell.appendChild(deleteButton)
@@ -564,22 +509,25 @@
                 tableContainer.appendChild(table)
             }
 
-            filterSelect.addEventListener('change', () => {
+            filterSelect.onchange = () => {
                 const val = filterSelect.value
                 renderTable(val ? data.filter(m => m.bo_phan === val) : data)
-            })
+            }
 
             renderTable(data)
         }
 
-        async function addMaintenance(xeId) {
-            const ngay = document.getElementById('maint-ngay-' + xeId).value
-            const loai = document.getElementById('maint-loai-' + xeId).value
-            const mo_ta = document.getElementById('maint-mota-' + xeId).value.trim()
-            const chiPhiRaw = document.getElementById('maint-chiphi-' + xeId).value
+        async function addMaintenanceModal() {
+            const xeId = currentMaintXeId
+            if (!xeId) return
+            const ngay = document.getElementById('maint-modal-ngay').value
+            const loai = document.getElementById('maint-modal-loai').value
+            const mo_ta = document.getElementById('maint-modal-mota').value.trim()
+            const chiPhiEl = document.getElementById('maint-modal-chiphi')
+            const chiPhiRaw = chiPhiEl.dataset.rawValue || chiPhiEl.value.replace(/\./g, '')
             const chi_phi = chiPhiRaw === '' ? null : Number(chiPhiRaw)
-            const bo_phan = document.getElementById('maint-bophan-' + xeId).value.trim() || null
-            const ngay_tiep_theo = document.getElementById('maint-ngaytiep-' + xeId).value || null
+            const bo_phan = document.getElementById('maint-modal-bophan').value.trim() || null
+            const ngay_tiep_theo = document.getElementById('maint-modal-ngaytiep').value || null
 
             if (!ngay) {
                 showToast('Vui lòng chọn ngày!', 'error')
@@ -596,18 +544,24 @@
                 return
             }
 
-            document.getElementById('maint-mota-' + xeId).value = ''
-            document.getElementById('maint-chiphi-' + xeId).value = ''
-            document.getElementById('maint-bophan-' + xeId).value = ''
-            document.getElementById('maint-ngaytiep-' + xeId).value = ''
-            loadMaintenance(xeId)
+            document.getElementById('maint-modal-bophan').value = ''
+            document.getElementById('maint-modal-mota').value = ''
+            const chiPhiResetEl = document.getElementById('maint-modal-chiphi')
+            chiPhiResetEl.value = ''
+            chiPhiResetEl.dataset.rawValue = ''
+            document.getElementById('maint-modal-ngaytiep').value = ''
+            loadMaintenanceModal()
+            loadVehicles()
         }
 
-        async function deleteMaintenance(id, xeId) {
+        async function deleteMaintenanceModal(id) {
             if (!confirm('Xóa bản ghi bảo dưỡng này?')) return
             const { error } = await sb.from('bao_duong').delete().eq('id', id)
             if (error) showToast('Lỗi: ' + error.message, 'error')
-            else loadMaintenance(xeId)
+            else {
+                loadMaintenanceModal()
+                loadVehicles()
+            }
         }
 
         let tripsModalVehicleId = null
@@ -780,6 +734,52 @@
         </div>
         <div id="trips-modal-body"></div>
       </div>
+    </div>
+
+    <div id="maintenance-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+        <div style="background:var(--white);border-radius:var(--radius);padding:24px;width:600px;max-width:95%;max-height:85vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <h3 id="maint-modal-title" style="margin:0"></h3>
+                <button class="btn btn-gray" onclick="closeMaintenanceModal()">Đóng</button>
+            </div>
+            <h4 style="margin:0 0 12px">Thêm bảo dưỡng</h4>
+            <div style="margin-bottom:12px">
+                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Ngày</label>
+                <input type="date" id="maint-modal-ngay" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;box-sizing:border-box">
+            </div>
+            <div style="margin-bottom:12px">
+                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Bộ phận</label>
+                <input type="text" id="maint-modal-bophan" list="maint-modal-bophan-list" placeholder="Bộ phận (vd: lốp trước trái)" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;box-sizing:border-box">
+                <datalist id="maint-modal-bophan-list"></datalist>
+            </div>
+            <div style="margin-bottom:12px">
+                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Loại</label>
+                <select id="maint-modal-loai" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:#1a1a2e;background:white;box-sizing:border-box">
+                    <option value="hong_hoc">Hỏng hóc</option>
+                    <option value="linh_kien">Linh kiện</option>
+                    <option value="lop_xe">Lốp xe</option>
+                    <option value="dinh_ky">Định kỳ</option>
+                </select>
+            </div>
+            <div style="margin-bottom:12px">
+                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Mô tả</label>
+                <input type="text" id="maint-modal-mota" placeholder="Mô tả" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;box-sizing:border-box">
+            </div>
+            <div style="margin-bottom:12px">
+                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Chi phí</label>
+                <input type="text" id="maint-modal-chiphi" placeholder="Chi phí (VNĐ)" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;box-sizing:border-box">
+            </div>
+            <div style="margin-bottom:12px">
+                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Ngày tiếp theo</label>
+                <input type="date" id="maint-modal-ngaytiep" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;box-sizing:border-box">
+            </div>
+            <button class="btn btn-full" onclick="addMaintenanceModal()" style="margin-bottom:20px">+ Thêm bảo dưỡng</button>
+            <h4 style="margin:0 0 8px">Lịch sử bảo dưỡng</h4>
+            <select id="maint-modal-filter" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px;color:#1a1a2e;background:white;margin-bottom:8px">
+                <option value="">Tất cả</option>
+            </select>
+            <div id="maint-modal-history"></div>
+        </div>
     </div>
 
     <div id="change-driver-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
