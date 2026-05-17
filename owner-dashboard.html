@@ -16,13 +16,32 @@
                 table thead tr th:nth-child(6) {
                     display: none;
                 }
+                .header h2 {
+                    font-size: 1.1em;
+                    flex-shrink: 0;
+                }
+                .header h2 .header-text {
+                    display: none;
+                }
+                .header > div {
+                    gap: 6px !important;
+                    flex-wrap: wrap;
+                    justify-content: flex-end;
+                }
+                .header .btn {
+                    padding: 6px 10px;
+                    font-size: 13px;
+                }
+                .header .btn-logout {
+                    padding: 6px 10px;
+                }
             }
         </style>
     </head>
     <body>
         <div class="header">
-            <h2>👑 Owner Dashboard</h2>
-            <div style="display:flex; gap: 10px;">
+            <h2>👑 <span class="header-text">Owner Dashboard</span></h2>
+            <div style="display:flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end;">
                 <button class="btn" onclick="window.location.href='driver.html'">👥 Tài xế</button>
                 <button class="btn" onclick="window.location.href='vehicles.html'">🚛 Xe</button>
                 <button class="btn" onclick="window.location.href='luong-thang.html'">💰 Bảng lương</button>
