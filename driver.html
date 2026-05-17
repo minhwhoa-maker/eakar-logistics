@@ -50,11 +50,12 @@
                             <th> Tổng lương</th>
                             <th> Tạm ứng</th>
                             <th> Thực nhận</th>
+                            <th>Đang giữ</th>
                             <th> Xóa</th>
                         </tr>
                     </thead>
                     <tbody id="driver-list">
-                        <tr><td colspan="8">Đang tải ...</td></tr>
+                        <tr><td colspan="9">Đang tải ...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -82,7 +83,7 @@
             tbody.textContent = ''
             const row = document.createElement('tr')
             const cell = document.createElement('td')
-            cell.colSpan = 8
+            cell.colSpan = 9
             cell.textContent = message
             row.appendChild(cell)
             tbody.appendChild(row)
@@ -167,6 +168,19 @@
                 const { data: advances, error: advancesError } = await advancesQuery
                 if (advancesError) throw new Error(advancesError.message)
 
+                const { data: allTrips, error: allTripsError } = await sb
+                    .from('trips')
+                    .select('tai_xe_id, tam_ung, hoan_ung')
+                    .eq('owner_id', ownerProfileId)
+                    .eq('trang_thai', 'hoan_thanh')
+                if (allTripsError) throw new Error(allTripsError.message)
+
+                const { data: allAdvances, error: allAdvancesError } = await sb
+                    .from('tam_ung_thang')
+                    .select('tai_xe_id, so_tien')
+                    .eq('owner_id', ownerProfileId)
+                if (allAdvancesError) throw new Error(allAdvancesError.message)
+
                 const tbody = document.getElementById('driver-list')
                 tbody.textContent = ''
                 drivers.forEach(d => {
@@ -175,6 +189,13 @@
                     const myAdvances = (advances || []).filter(a => a.tai_xe_id === d.id)
                     const totalAdvance = myAdvances.reduce((sum, a) => sum + (Number(a.so_tien) || 0), 0)
                     const thucNhan = totalLuong - totalAdvance
+
+                    const myAllTrips = (allTrips || []).filter(t => t.tai_xe_id === d.id)
+                    const totalTamUngTrips = myAllTrips.reduce((sum, t) => sum + (Number(t.tam_ung) || 0), 0)
+                    const totalHoanUngTrips = myAllTrips.reduce((sum, t) => sum + (Number(t.hoan_ung) || 0), 0)
+                    const myAllAdvances = (allAdvances || []).filter(a => a.tai_xe_id === d.id)
+                    const totalTamUngThang = myAllAdvances.reduce((sum, a) => sum + (Number(a.so_tien) || 0), 0)
+                    const balance = totalTamUngTrips + totalTamUngThang - totalHoanUngTrips
                     const row = document.createElement('tr')
 
                     const nameCell = document.createElement('td')
@@ -195,6 +216,17 @@
                     thucNhanCell.style.color = thucNhan >= 0 ? '#27ae60' : '#e74c3c'
                     thucNhanCell.style.fontWeight = 'bold'
 
+                    const balanceCell = document.createElement('td')
+                    const balanceSpan = document.createElement('span')
+                    balanceSpan.textContent = formatMoney(balance)
+                    balanceSpan.style.color = balance > 0 ? 'var(--danger)' : 'var(--success)'
+                    balanceSpan.style.fontWeight = 'bold'
+                    balanceSpan.style.cursor = 'pointer'
+                    balanceSpan.style.textDecoration = 'underline'
+                    balanceSpan.addEventListener('click', () => openBalanceModal(d.id, d.full_name || '-'))
+                    balanceCell.appendChild(balanceSpan)
+                    row.appendChild(balanceCell)
+
                     const actionCell = document.createElement('td')
                     const actions = document.createElement('div')
                     actions.style.display = 'flex'
@@ -205,7 +237,7 @@
                     advanceButton.className = 'btn btn-success'
                     advanceButton.style.padding = '6px 12px'
                     advanceButton.textContent = '+ Tạm ứng'
-                    advanceButton.addEventListener('click', () => addAdvance(d.id, d.full_name || 'tài xế'))
+                    advanceButton.addEventListener('click', () => openAdvanceModal(d.id, d.full_name || 'tài xế'))
 
                     const deleteButton = document.createElement('button')
                     deleteButton.className = 'btn btn-danger'
@@ -225,45 +257,201 @@
             }
         }
 
-        async function addAdvance(driverId, driverName) {
-            const month = document.getElementById('filter-month').value
-            if (!month) {
-                showToast('Vui lòng chọn tháng trước!', 'error')
+        function numberToVietnamese(n) {
+            if (!n || n === 0) return ''
+            const ones = ['', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín']
+            function readGroup(n) {
+                const h = Math.floor(n / 100)
+                const t = Math.floor((n % 100) / 10)
+                const o = n % 10
+                let s = ''
+                if (h) s += ones[h] + ' trăm'
+                if (t === 1) s += (s ? ' mười' : 'mười') + (o ? ' ' + (o === 5 ? 'lăm' : o === 1 ? 'một' : ones[o]) : '')
+                else if (t > 1) s += (s ? ' ' : '') + ones[t] + ' mươi' + (o ? ' ' + (o === 5 ? 'lăm' : o === 1 ? 'mốt' : ones[o]) : '')
+                else if (o) s += (h ? ' lẻ ' : '') + ones[o]
+                return s
+            }
+            const b = Math.floor(n / 1000000000)
+            const m = Math.floor((n % 1000000000) / 1000000)
+            const k = Math.floor((n % 1000000) / 1000)
+            const r = n % 1000
+            const parts = []
+            if (b) parts.push(readGroup(b) + ' tỷ')
+            if (m) parts.push(readGroup(m) + ' triệu')
+            if (k) parts.push(readGroup(k) + ' nghìn')
+            if (r) parts.push(readGroup(r))
+            const s = parts.join(' ')
+            return s.charAt(0).toUpperCase() + s.slice(1) + ' đ'
+        }
+
+        let advanceAmountListenerAdded = false
+
+        function openAdvanceModal(driverId, driverName) {
+            document.getElementById('advance-driver-id').value = driverId
+            document.getElementById('advance-driver-name').value = driverName
+            document.getElementById('advance-modal-title').textContent = 'Tạm ứng cho ' + driverName
+            const amountInput = document.getElementById('advance-amount')
+            amountInput.value = ''
+            amountInput.dataset.rawValue = ''
+            document.getElementById('advance-amount-hint').textContent = ''
+            document.getElementById('advance-ghi-chu').value = ''
+            if (!advanceAmountListenerAdded) {
+                advanceAmountListenerAdded = true
+                amountInput.addEventListener('input', function () {
+                    const raw = this.value.replace(/\./g, '').replace(/\D/g, '')
+                    this.dataset.rawValue = raw
+                    this.value = raw ? Number(raw).toLocaleString('vi-VN') : ''
+                    document.getElementById('advance-amount-hint').textContent = raw ? numberToVietnamese(Number(raw)) : ''
+                })
+            }
+            document.getElementById('advance-modal').style.display = 'flex'
+            amountInput.focus()
+        }
+
+        function closeAdvanceModal() {
+            document.getElementById('advance-modal').style.display = 'none'
+        }
+
+        async function saveAdvance() {
+            const driverId = document.getElementById('advance-driver-id').value
+            const amountInput = document.getElementById('advance-amount')
+            const raw = amountInput.dataset.rawValue || amountInput.value.replace(/\./g, '').replace(/\D/g, '')
+            const amount = Number(raw)
+            if (!raw || !Number.isFinite(amount) || amount < 0) {
+                showToast('Số tiền không hợp lệ', 'error')
                 return
             }
-
-            const { data: existing, error: checkError } = await sb
-                .from('tam_ung_thang')
-                .select('id, so_tien')
-                .eq('owner_id', ownerProfileId)
-                .eq('tai_xe_id', driverId)
-                .eq('thang', month)
-            if (checkError) {
-                showToast('Lỗi kiểm tra tạm ứng: ' + checkError.message, 'error')
-                return
-            }
-            if (existing && existing.length > 0) {
-                const total = existing.reduce((s, r) => s + (Number(r.so_tien) || 0), 0)
-                if (!confirm(`${driverName} đã có ${existing.length} tạm ứng tháng ${month} (tổng ${total.toLocaleString('vi-VN')} đ). Thêm nữa?`)) return
-            }
-
-            const amount = prompt(`Nhập số tiền tạm ứng cho ${driverName} (tháng ${month}):`)
-            if (amount === null) return
-            const parsedAmount = Number(amount)
-            if (amount.trim() === '' || !Number.isFinite(parsedAmount) || parsedAmount < 0) {
-                showToast('Số tiền tạm ứng không hợp lệ', 'error')
-                return
-            }
-
+            const ghiChu = document.getElementById('advance-ghi-chu').value.trim()
             const { error } = await sb.from('tam_ung_thang').insert({
                 owner_id: ownerProfileId,
                 tai_xe_id: driverId,
-                thang: month,
-                so_tien: parsedAmount
+                thang: new Date().toISOString().slice(0, 7),
+                so_tien: amount,
+                ghi_chu: ghiChu,
+                trang_thai: 'confirmed'
             })
+            if (error) { showToast('Lỗi: ' + error.message, 'error'); return }
+            closeAdvanceModal()
+            showToast('Đã thêm tạm ứng', 'success')
+            loadDrivers()
+        }
 
-            if (error) showToast('Lỗi: ' + error.message, 'error')
-            else loadDrivers()
+        async function openBalanceModal(driverId, driverName) {
+            document.getElementById('balance-modal-title').textContent = 'Công nợ của ' + driverName
+            const body = document.getElementById('balance-modal-body')
+            body.textContent = 'Đang tải...'
+            document.getElementById('balance-modal').style.display = 'flex'
+
+            const [tripsRes, advancesRes] = await Promise.all([
+                sb.from('trips')
+                    .select('ngay_bat_dau, tuyen_duong, tam_ung, hoan_ung')
+                    .eq('owner_id', ownerProfileId)
+                    .eq('tai_xe_id', driverId)
+                    .eq('trang_thai', 'hoan_thanh')
+                    .order('ngay_bat_dau', { ascending: false }),
+                sb.from('tam_ung_thang')
+                    .select('thang, so_tien, ghi_chu')
+                    .eq('owner_id', ownerProfileId)
+                    .eq('tai_xe_id', driverId)
+                    .order('thang', { ascending: false })
+            ])
+
+            if (tripsRes.error) { body.textContent = 'Lỗi: ' + tripsRes.error.message; return }
+            if (advancesRes.error) { body.textContent = 'Lỗi: ' + advancesRes.error.message; return }
+
+            const tripsData = tripsRes.data || []
+            const advancesData = advancesRes.data || []
+            const tripRows = tripsData.filter(t => (Number(t.tam_ung) > 0) || (Number(t.hoan_ung) > 0))
+            const totalTamUngTrips = tripsData.reduce((s, t) => s + (Number(t.tam_ung) || 0), 0)
+            const totalHoanUngTrips = tripsData.reduce((s, t) => s + (Number(t.hoan_ung) || 0), 0)
+            const totalAdvances = advancesData.reduce((s, a) => s + (Number(a.so_tien) || 0), 0)
+            const balance = totalTamUngTrips + totalAdvances - totalHoanUngTrips
+
+            body.textContent = ''
+
+            const h4_1 = document.createElement('h4')
+            h4_1.textContent = 'Tạm ứng chuyến'
+            h4_1.style.marginBottom = '8px'
+            body.appendChild(h4_1)
+
+            if (tripRows.length === 0) {
+                const p = document.createElement('p')
+                p.textContent = 'Không có tạm ứng chuyến'
+                p.style.color = 'var(--text-muted)'
+                body.appendChild(p)
+            } else {
+                const table1 = document.createElement('table')
+                const thead1 = document.createElement('thead')
+                const headRow1 = document.createElement('tr')
+                ;['Ngày', 'Tuyến', 'Tạm ứng', 'Hoàn ứng'].forEach(label => {
+                    const th = document.createElement('th')
+                    th.textContent = label
+                    headRow1.appendChild(th)
+                })
+                thead1.appendChild(headRow1)
+                const tbody1 = document.createElement('tbody')
+                tripRows.forEach(t => {
+                    const row = document.createElement('tr')
+                    ;[formatDate(t.ngay_bat_dau), t.tuyen_duong || '-', formatMoney(t.tam_ung || 0), formatMoney(t.hoan_ung || 0)].forEach((val, i) => {
+                        const td = document.createElement('td')
+                        td.textContent = val
+                        if (i === 2) td.style.color = 'var(--danger)'
+                        if (i === 3) td.style.color = 'var(--success)'
+                        row.appendChild(td)
+                    })
+                    tbody1.appendChild(row)
+                })
+                table1.append(thead1, tbody1)
+                body.appendChild(table1)
+            }
+
+            const h4_2 = document.createElement('h4')
+            h4_2.textContent = 'Tạm ứng ngoài chuyến'
+            h4_2.style.margin = '16px 0 8px'
+            body.appendChild(h4_2)
+
+            if (advancesData.length === 0) {
+                const p = document.createElement('p')
+                p.textContent = 'Không có tạm ứng ngoài chuyến'
+                p.style.color = 'var(--text-muted)'
+                body.appendChild(p)
+            } else {
+                const table2 = document.createElement('table')
+                const thead2 = document.createElement('thead')
+                const headRow2 = document.createElement('tr')
+                ;['Tháng', 'Số tiền', 'Ghi chú'].forEach(label => {
+                    const th = document.createElement('th')
+                    th.textContent = label
+                    headRow2.appendChild(th)
+                })
+                thead2.appendChild(headRow2)
+                const tbody2 = document.createElement('tbody')
+                advancesData.forEach(a => {
+                    const row = document.createElement('tr')
+                    ;[a.thang || '-', formatMoney(a.so_tien || 0), a.ghi_chu || '-'].forEach((val, i) => {
+                        const td = document.createElement('td')
+                        td.textContent = val
+                        if (i === 1) td.style.color = 'var(--danger)'
+                        row.appendChild(td)
+                    })
+                    tbody2.appendChild(row)
+                })
+                table2.append(thead2, tbody2)
+                body.appendChild(table2)
+            }
+
+            const totalDiv = document.createElement('div')
+            totalDiv.style.cssText = 'margin-top:16px;font-weight:bold;font-size:16px;border-top:2px solid var(--border);padding-top:12px'
+            totalDiv.textContent = 'Số dư đang giữ: '
+            const totalSpan = document.createElement('span')
+            totalSpan.textContent = formatMoney(balance)
+            totalSpan.style.color = balance > 0 ? 'var(--danger)' : 'var(--success)'
+            totalDiv.appendChild(totalSpan)
+            body.appendChild(totalDiv)
+        }
+
+        function closeBalanceModal() {
+            document.getElementById('balance-modal').style.display = 'none'
         }
 
         async function openTripsModal(driverId, driverName) {
@@ -408,6 +596,40 @@
                 <button class="btn btn-gray" onclick="closeTripsModal()">Đóng</button>
             </div>
             <div id="trips-modal-body"></div>
+        </div>
+    </div>
+
+    <div id="advance-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+        <div style="background:var(--white);border-radius:var(--radius);padding:24px;width:400px;max-width:95%;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <h3 id="advance-modal-title" style="margin:0"></h3>
+                <button class="btn btn-gray" onclick="closeAdvanceModal()">Đóng</button>
+            </div>
+            <input type="hidden" id="advance-driver-id">
+            <input type="hidden" id="advance-driver-name">
+            <div class="form-group" style="margin-bottom:12px">
+                <label style="display:block;margin-bottom:4px;font-weight:600">Số tiền</label>
+                <input type="text" id="advance-amount" placeholder="0" style="width:100%;box-sizing:border-box" inputmode="numeric">
+                <div id="advance-amount-hint" style="font-size:12px;color:var(--text-muted);margin-top:4px"></div>
+            </div>
+            <div class="form-group" style="margin-bottom:16px">
+                <label style="display:block;margin-bottom:4px;font-weight:600">Ghi chú</label>
+                <input type="text" id="advance-ghi-chu" placeholder="Ghi chú (tuỳ chọn)" style="width:100%;box-sizing:border-box">
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+                <button class="btn btn-gray" onclick="closeAdvanceModal()">Hủy</button>
+                <button class="btn btn-success" onclick="saveAdvance()">Lưu</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="balance-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+        <div style="background:var(--white);border-radius:var(--radius);padding:24px;width:600px;max-width:95%;max-height:80vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <h3 id="balance-modal-title" style="margin:0"></h3>
+                <button class="btn btn-gray" onclick="closeBalanceModal()">Đóng</button>
+            </div>
+            <div id="balance-modal-body"></div>
         </div>
     </div>
 </body>
