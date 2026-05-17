@@ -546,7 +546,7 @@
                 table.style.marginTop = '12px'
                 const thead = document.createElement('thead')
                 const headRow = document.createElement('tr')
-                const headers = ['Ngày', 'Bộ phận', 'Loại', 'Mô tả', 'Chi phí', '']
+                const headers = ['Ngày', 'Bộ phận', 'Người nhập', 'Loại', 'Mô tả', 'Chi phí', '']
                 headers.forEach(label => {
                     const th = document.createElement('th')
                     th.textContent = label
@@ -558,8 +558,19 @@
                     const row = document.createElement('tr')
                     addCell(row, formatDate(m.ngay))
                     addCell(row, m.bo_phan || '-')
+                    addCell(row, m.nguoi_nhap === 'driver' ? '👤 Tài xế' : m.nguoi_nhap === 'owner' ? '🏢 Chủ xe' : '-')
                     addCell(row, loaiLabels[m.loai] || m.loai || '-')
-                    addCell(row, m.mo_ta || '-')
+                    const moTaCell = document.createElement('td')
+                    moTaCell.textContent = m.mo_ta || '-'
+                    if (m.trip_id) {
+                        const tripLink = document.createElement('a')
+                        tripLink.href = 'trip-detail.html?trip_id=' + m.trip_id
+                        tripLink.target = '_blank'
+                        tripLink.style.cssText = 'margin-left:8px;color:var(--primary);font-size:0.85em'
+                        tripLink.textContent = '→ Xem chuyến'
+                        moTaCell.appendChild(tripLink)
+                    }
+                    row.appendChild(moTaCell)
                     addCell(row, m.chi_phi === null || m.chi_phi === undefined ? '-' : formatMoney(m.chi_phi))
                     const actionCell = document.createElement('td')
                     const deleteButton = createButton('Xóa', 'btn btn-danger', () => deleteMaintenanceModal(m.id))

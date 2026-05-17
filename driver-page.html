@@ -21,6 +21,7 @@
         <div class="filter-bar">
             <button id="tab-btn-dang-chay" class="btn" onclick="switchTab('dang_chay')">🚛 Đang chạy</button>
             <button id="tab-btn-hoan-thanh" class="btn btn-gray" onclick="switchTab('hoan_thanh')">✅ Hoàn thành</button>
+            <button class="btn btn-warning" id="btn-bao-duong" onclick="openMaintenanceModal()" style="display:none">🔧 Báo bảo dưỡng</button>
         </div>
 
         <!-- Tab: Đang chạy -->
@@ -65,6 +66,57 @@
             </div>
         </div>
     </div>
+    <div id="maintenance-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">
+        <div style="background:var(--white);border-radius:var(--radius);padding:24px;width:500px;max-width:95%;max-height:90vh;overflow-y:auto">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <h3 style="margin:0">🔧 Báo bảo dưỡng</h3>
+                <button class="btn btn-gray" onclick="closeMaintenanceModal()">Đóng</button>
+            </div>
+            <div class="form-group">
+                <label>Ngày</label>
+                <input type="date" id="maint-ngay">
+            </div>
+            <div class="form-group">
+                <label>Bộ phận</label>
+                <input type="text" id="maint-bophan" list="maint-bophan-list" placeholder="vd: lốp trước trái">
+                <datalist id="maint-bophan-list"></datalist>
+            </div>
+            <div class="form-group">
+                <label>Loại</label>
+                <select id="maint-loai" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:15px;color:#1a1a2e;background:white">
+                    <option value="hong_hoc">Hỏng hóc</option>
+                    <option value="linh_kien">Linh kiện</option>
+                    <option value="lop_xe">Lốp xe</option>
+                    <option value="dinh_ky">Định kỳ</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Mô tả</label>
+                <input type="text" id="maint-mota">
+            </div>
+            <div class="form-group">
+                <label>Chi phí</label>
+                <input type="text" id="maint-chiphi" placeholder="Chi phí (VNĐ)">
+            </div>
+            <div class="form-group">
+                <label>Ảnh hóa đơn</label>
+                <input type="file" accept="image/*" capture="environment" class="upload-input" id="maint-camera-input" onchange="handleMaintFileSelect(this)">
+                <input type="file" accept="image/*" class="upload-input" id="maint-gallery-input" onchange="handleMaintFileSelect(this)">
+                <div class="upload-buttons">
+                    <button type="button" class="btn-upload" onclick="document.getElementById('maint-camera-input').click()"><span class="upload-icon">📷</span> Chụp ảnh</button>
+                    <button type="button" class="btn-upload" onclick="document.getElementById('maint-gallery-input').click()"><span class="upload-icon">🖼️</span> Thư viện</button>
+                </div>
+                <div id="maint-receipt-preview" style="margin-top:12px;display:none">
+                    <img id="maint-receipt-preview-img" src="" style="width:100%;max-height:200px;object-fit:cover;border-radius:var(--radius-sm);border:1.5px solid var(--border);display:block">
+                    <span class="preview-remove" onclick="clearMaintReceipt()">✕ Xóa ảnh</span>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:16px">
+                <button class="btn" onclick="submitMaintenance()">Lưu</button>
+                <button class="btn btn-gray" onclick="closeMaintenanceModal()">Hủy</button>
+            </div>
+        </div>
+    </div>
     <div class="toast" id="toast"></div>
     <script>
     function showToast(msg, type = '') {
@@ -83,10 +135,11 @@
     let currentXeId = null
     let activeFormId = null
     let activeReceiptFile = null
+    let maintReceiptFile = null
+    let maintChiPhiInitialized = false
 
     const EXPENSE_TYPES = {
         xang:   '⛽ Xăng',
-        sua_xe: '🔧 Sửa xe',
         bai_xe: '🅿️ Bãi xe',
         khac:   '📦 Khác'
     }
@@ -868,6 +921,118 @@
         })
     }
 
+    // ── Maintenance ───────────────────────────────────────────────────
+    const PRESET_PARTS = [
+        'Lốp trước trái', 'Lốp trước phải', 'Lốp sau trái', 'Lốp sau phải',
+        'Nhớt động cơ', 'Lọc dầu', 'Lọc gió', 'Lọc nhiên liệu',
+        'Má phanh trước', 'Má phanh sau', 'Đĩa phanh',
+        'Ắc quy', 'Bugi', 'Dây curoa',
+        'Đèn pha', 'Đèn hậu', 'Gương chiếu hậu',
+        'Thay dầu hộp số', 'Bảo dưỡng điều hòa', 'Đăng kiểm', 'Bảo hiểm'
+    ]
+
+    const MAINT_TYPES = {
+        hong_hoc: 'Hỏng hóc',
+        linh_kien: 'Linh kiện',
+        lop_xe: 'Lốp xe',
+        dinh_ky: 'Định kỳ'
+    }
+
+    function handleMaintFileSelect(input) {
+        maintReceiptFile = input.files[0]
+        const reader = new FileReader()
+        reader.onload = e => {
+            document.getElementById('maint-receipt-preview-img').src = e.target.result
+            document.getElementById('maint-receipt-preview').style.display = 'block'
+        }
+        reader.readAsDataURL(maintReceiptFile)
+    }
+
+    function clearMaintReceipt() {
+        maintReceiptFile = null
+        document.querySelectorAll('#maintenance-modal .upload-input').forEach(i => i.value = '')
+        document.getElementById('maint-receipt-preview').style.display = 'none'
+        document.getElementById('maint-receipt-preview-img').src = ''
+    }
+
+    async function openMaintenanceModal() {
+        document.getElementById('maint-ngay').value = new Date().toISOString().split('T')[0]
+        document.getElementById('maint-bophan').value = ''
+        document.getElementById('maint-loai').value = 'hong_hoc'
+        document.getElementById('maint-mota').value = ''
+        const chiPhiEl = document.getElementById('maint-chiphi')
+        chiPhiEl.value = ''
+        chiPhiEl.dataset.rawValue = ''
+        const nextSib = chiPhiEl.nextElementSibling
+        if (nextSib && nextSib.tagName === 'SMALL') nextSib.textContent = ''
+        clearMaintReceipt()
+        const { data } = await sb.from('bao_duong').select('bo_phan').eq('xe_id', currentXeId)
+        const unique = [...new Set([...(data || []).map(d => d.bo_phan).filter(Boolean), ...PRESET_PARTS])]
+        const datalist = document.getElementById('maint-bophan-list')
+        datalist.textContent = ''
+        unique.forEach(item => {
+            const opt = document.createElement('option')
+            opt.value = item
+            datalist.appendChild(opt)
+        })
+        if (!maintChiPhiInitialized) {
+            addMoneyHint(document.getElementById('maint-chiphi'))
+            maintChiPhiInitialized = true
+        }
+        document.getElementById('maintenance-modal').style.display = 'flex'
+    }
+
+    function closeMaintenanceModal() {
+        document.getElementById('maintenance-modal').style.display = 'none'
+        maintReceiptFile = null
+    }
+
+    async function submitMaintenance() {
+        const ngay = document.getElementById('maint-ngay').value
+        const bo_phan = document.getElementById('maint-bophan').value.trim()
+        const loai = document.getElementById('maint-loai').value
+        const mo_ta = document.getElementById('maint-mota').value.trim()
+        const chiPhiEl = document.getElementById('maint-chiphi')
+        const chiPhiVal = chiPhiEl.dataset.rawValue || chiPhiEl.value
+        const chi_phi = Number(chiPhiVal)
+        if (!ngay) { showToast('Vui lòng chọn ngày', 'error'); return }
+        if (!bo_phan) { showToast('Vui lòng nhập bộ phận', 'error'); return }
+        if (!chiPhiVal || !Number.isFinite(chi_phi) || chi_phi < 0) { showToast('Vui lòng nhập chi phí hợp lệ', 'error'); return }
+        const btn = document.querySelector('#maintenance-modal .btn')
+        btn.disabled = true
+        showToast('Đang lấy vị trí GPS...')
+        let loc
+        try { loc = await getLocation() }
+        catch (e) { showToast(e.message, 'error'); btn.disabled = false; return }
+        const { data: activeTrip } = await sb.from('trips').select('id').eq('owner_id', currentOwnerId).eq('tai_xe_id', currentProfileId).eq('trang_thai', 'dang_chay').limit(1).maybeSingle()
+        const trip_id = activeTrip?.id || null
+        let anh_url = null
+        if (maintReceiptFile) {
+            try {
+                anh_url = await uploadReceipt(maintReceiptFile, currentProfileId)
+            } catch (e) {
+                showToast('Lỗi upload ảnh: ' + e.message, 'error')
+                btn.disabled = false
+                return
+            }
+        }
+        const { error } = await sb.from('bao_duong').insert({
+            owner_id: currentOwnerId,
+            xe_id: currentXeId,
+            ngay, loai, bo_phan,
+            mo_ta: mo_ta || null,
+            chi_phi,
+            anh_url: anh_url || null,
+            lat: loc.lat, lng: loc.lng,
+            nguoi_nhap: 'driver',
+            trip_id
+        })
+        btn.disabled = false
+        if (error) { showToast('Lỗi: ' + error.message, 'error'); return }
+        closeMaintenanceModal()
+        showToast('Đã báo bảo dưỡng', 'success')
+    }
+
     // ── Auth ──────────────────────────────────────────────────────────
     async function logout() {
         await sb.auth.signOut()
@@ -886,6 +1051,7 @@
         currentXeId = xe?.id || null
         if (xe) {
             document.getElementById('btn-new-trip').style.display = ''
+            document.getElementById('btn-bao-duong').style.display = ''
         } else {
             const warn = document.createElement('div')
             warn.style.cssText = 'background:#fdecea;border:1.5px solid var(--danger);border-radius:var(--radius);padding:16px;color:var(--danger);margin-bottom:12px;font-size:14px;'
