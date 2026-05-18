@@ -83,7 +83,8 @@ Khi user case (b) login lần đầu, bai10 thấy email đã có → skip inser
 - `.form-group input` được style sẵn. `.form-group select` **không** được style — cần inline style: `width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:15px;color:#1a1a2e;background:white`.
 - `#receipt-preview` và `#receipt-preview img` được style bằng **ID selector** trong `style.css` — không áp dụng cho dynamic forms. Khi tạo preview image động phải thêm inline style.
 - Stat values trong owner-dashboard: `.stat-value.green/red/blue/orange`.
-- Bảng nhiều cột bọc trong `<div class="table-scroll wide">` để mobile scroll ngang.
+- Bảng nhiều cột bọc trong `<div class="table-scroll wide">` để mobile scroll ngang. Trên desktop ≥1200px, min-width không áp dụng (chỉ active ở ≤1199px) nên bảng tự fit theo container.
+- `.container` responsive tiers: `max-width: 900px` (default) → `1400px` (≥1200px) → `1600px` (≥1600px). Không dùng `max-width: 900px` hardcode cho page-level elements vì sẽ break trên desktop rộng.
 - Toggle switch notify settings: `.notify-row` (flex row), `.toggle` (label wrapper), `.toggle-slider` (pseudo-element track/thumb). Checked state: `--success` green. Đã có trong `style.css`.
 - All asset links dùng **relative path** (`manifest.json`, `style.css`, `sw.js`, `shared.js`) — không có leading `/`.
 - **Mobile header pattern** (≤600px): mọi page dùng `<h2>emoji <span class="header-text">Tên trang</span></h2>` — `.header-text` bị ẩn trên mobile qua `style.css`. Buttons nhóm trong `<div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">`. `style.css` có `@media (max-width:600px)` override padding/font-size cho `.header`, `.header h2`, `.header > div`, `.header .btn`/`.btn-logout` — **không cần thêm local `<style>` block** trong từng page cho mobile header.
