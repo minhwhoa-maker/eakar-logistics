@@ -11,11 +11,19 @@
 </head>
 <body>
     <div class="header">
+        <button class="hamburger-btn" id="hamburger-btn">☰</button>
         <h2>🚛 <span class="header-text">Quản lý xe</span></h2>
-        <div style="display:flex; gap: 10px">
+        <div class="header-nav-desktop" style="display:flex; gap: 10px">
             <button class="btn" onclick="window.location.href='owner-dashboard.html'">← Dashboard</button>
             <button class="btn btn-logout" onclick="logout()">Logout</button>
         </div>
+    </div>
+    <div class="hamburger-menu" id="hamburger-menu">
+        <a href="owner-dashboard.html">← Dashboard</a>
+        <a href="driver.html">👥 Tài xế</a>
+        <a href="luong-thang.html">💰 Bảng lương</a>
+        <div class="menu-divider"></div>
+        <button class="menu-logout" id="menu-logout">🚪 Đăng xuất</button>
     </div>
     <div class="container">
         <div class="card">
@@ -794,6 +802,16 @@
         }
         setupLogoutListener(sb)
         init()
+        ;(function() {
+            const btn = document.getElementById('hamburger-btn')
+            const menu = document.getElementById('hamburger-menu')
+            btn.addEventListener('click', e => { e.stopPropagation(); menu.classList.toggle('show') })
+            document.addEventListener('click', e => {
+                if (!e.target.closest('#hamburger-menu') && !e.target.closest('#hamburger-btn'))
+                    menu.classList.remove('show')
+            })
+            document.getElementById('menu-logout').addEventListener('click', logout)
+        })()
     </script>
     <div class="toast" id="toast"></div>
 

@@ -21,14 +21,24 @@
     </head>
     <body>
         <div class="header">
+            <button class="hamburger-btn" id="hamburger-btn">☰</button>
             <h2>👑 <span class="header-text">Owner Dashboard</span></h2>
-            <div style="display:flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end;">
-                <button class="btn" onclick="window.location.href='driver.html'">👥 Tài xế</button>
-                <button class="btn" onclick="window.location.href='vehicles.html'">🚛 Xe</button>
-                <button class="btn" onclick="window.location.href='luong-thang.html'">💰 Bảng lương</button>
+            <div style="display:flex; gap: 10px; align-items: center;">
                 <button class="btn" onclick="toggleNotifyPanel()">🔔</button>
-                <button class="btn btn-logout" onclick="logout()">Đăng xuất</button>
+                <div class="header-nav-desktop" style="display:flex; gap: 10px;">
+                    <button class="btn" onclick="window.location.href='driver.html'">👥 Tài xế</button>
+                    <button class="btn" onclick="window.location.href='vehicles.html'">🚛 Xe</button>
+                    <button class="btn" onclick="window.location.href='luong-thang.html'">💰 Bảng lương</button>
+                    <button class="btn btn-logout" onclick="logout()">Đăng xuất</button>
+                </div>
             </div>
+        </div>
+        <div class="hamburger-menu" id="hamburger-menu">
+            <a href="driver.html">👥 Tài xế</a>
+            <a href="vehicles.html">🚛 Xe</a>
+            <a href="luong-thang.html">💰 Bảng lương</a>
+            <div class="menu-divider"></div>
+            <button class="menu-logout" id="menu-logout">🚪 Đăng xuất</button>
         </div>
         <div id="notify-panel" style="display:none;position:fixed;top:64px;right:16px;z-index:500;background:var(--white);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;min-width:260px;">
             <h4 style="margin:0 0 12px;font-size:0.95em">🔔 Cài đặt thông báo</h4>
@@ -326,6 +336,16 @@
 
             setupLogoutListener(sb)
             initPage()
+            ;(function() {
+                const btn = document.getElementById('hamburger-btn')
+                const menu = document.getElementById('hamburger-menu')
+                btn.addEventListener('click', e => { e.stopPropagation(); menu.classList.toggle('show') })
+                document.addEventListener('click', e => {
+                    if (!e.target.closest('#hamburger-menu') && !e.target.closest('#hamburger-btn'))
+                        menu.classList.remove('show')
+                })
+                document.getElementById('menu-logout').addEventListener('click', logout)
+            })()
             window.addEventListener('beforeunload', () => {
                 if (tripsChannel) sb.removeChannel(tripsChannel)
             })
