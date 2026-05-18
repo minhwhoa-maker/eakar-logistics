@@ -352,117 +352,126 @@
         }
 
         async function openBalanceModal(driverId, driverName) {
-            document.getElementById('balance-modal-title').textContent = 'Công nợ của ' + driverName
+            document.getElementById('balance-modal-title').textContent = 'Lịch sử công nợ — ' + driverName
             const body = document.getElementById('balance-modal-body')
             body.textContent = 'Đang tải...'
             document.getElementById('balance-modal').style.display = 'flex'
 
             const [tripsRes, advancesRes] = await Promise.all([
                 sb.from('trips')
-                    .select('ngay_bat_dau, tuyen_duong, tam_ung, hoan_ung')
+                    .select('id, ngay_ket_thuc, tuyen_duong, tam_ung, hoan_ung')
                     .eq('owner_id', ownerProfileId)
                     .eq('tai_xe_id', driverId)
                     .eq('trang_thai', 'hoan_thanh')
-                    .order('ngay_bat_dau', { ascending: false }),
+                    .or('tam_ung.gt.0,hoan_ung.gt.0'),
                 sb.from('tam_ung_thang')
-                    .select('thang, so_tien, ghi_chu')
+                    .select('id, thang, so_tien, ghi_chu')
                     .eq('owner_id', ownerProfileId)
                     .eq('tai_xe_id', driverId)
-                    .order('thang', { ascending: false })
             ])
 
             if (tripsRes.error) { body.textContent = 'Lỗi: ' + tripsRes.error.message; return }
             if (advancesRes.error) { body.textContent = 'Lỗi: ' + advancesRes.error.message; return }
 
-            const tripsData = tripsRes.data || []
-            const advancesData = advancesRes.data || []
-            const tripRows = tripsData.filter(t => (Number(t.tam_ung) > 0) || (Number(t.hoan_ung) > 0))
-            const totalTamUngTrips = tripsData.reduce((s, t) => s + (Number(t.tam_ung) || 0), 0)
-            const totalHoanUngTrips = tripsData.reduce((s, t) => s + (Number(t.hoan_ung) || 0), 0)
-            const totalAdvances = advancesData.reduce((s, a) => s + (Number(a.so_tien) || 0), 0)
-            const balance = totalTamUngTrips + totalAdvances - totalHoanUngTrips
+            const entries = []
+            ;(tripsRes.data || []).forEach(t => {
+                if (Number(t.tam_ung) > 0) {
+                    entries.push({ date: t.ngay_ket_thuc, type: 'trip_advance', label: 'Tạm ứng chuyến: ' + (t.tuyen_duong || '-'), amount: Number(t.tam_ung), sign: +1 })
+                }
+                if (Number(t.hoan_ung) > 0) {
+                    entries.push({ date: t.ngay_ket_thuc, type: 'refund', label: 'Hoàn ứng chuyến: ' + (t.tuyen_duong || '-'), amount: Number(t.hoan_ung), sign: -1 })
+                }
+            })
+            ;(advancesRes.data || []).forEach(a => {
+                entries.push({ date: a.thang + '-01', type: 'advance', label: 'Tạm ứng' + (a.ghi_chu ? ': ' + a.ghi_chu : ''), amount: Number(a.so_tien), sign: +1 })
+            })
+            entries.sort((a, b) => new Date(a.date) - new Date(b.date))
 
             body.textContent = ''
 
-            const h4_1 = document.createElement('h4')
-            h4_1.textContent = 'Tạm ứng chuyến'
-            h4_1.style.marginBottom = '8px'
-            body.appendChild(h4_1)
-
-            if (tripRows.length === 0) {
-                const p = document.createElement('p')
-                p.textContent = 'Không có tạm ứng chuyến'
-                p.style.color = 'var(--text-muted)'
-                body.appendChild(p)
-            } else {
-                const table1 = document.createElement('table')
-                const thead1 = document.createElement('thead')
-                const headRow1 = document.createElement('tr')
-                ;['Ngày', 'Tuyến', 'Tạm ứng', 'Hoàn ứng'].forEach(label => {
-                    const th = document.createElement('th')
-                    th.textContent = label
-                    headRow1.appendChild(th)
-                })
-                thead1.appendChild(headRow1)
-                const tbody1 = document.createElement('tbody')
-                tripRows.forEach(t => {
-                    const row = document.createElement('tr')
-                    ;[formatDate(t.ngay_bat_dau), t.tuyen_duong || '-', formatMoney(t.tam_ung || 0), formatMoney(t.hoan_ung || 0)].forEach((val, i) => {
-                        const td = document.createElement('td')
-                        td.textContent = val
-                        if (i === 2) td.style.color = 'var(--danger)'
-                        if (i === 3) td.style.color = 'var(--success)'
-                        row.appendChild(td)
-                    })
-                    tbody1.appendChild(row)
-                })
-                table1.append(thead1, tbody1)
-                body.appendChild(table1)
+            if (entries.length === 0) {
+                const empty = document.createElement('p')
+                empty.textContent = 'Chưa có giao dịch nào'
+                empty.style.cssText = 'text-align:center;color:var(--text-muted);padding:16px'
+                body.appendChild(empty)
+                return
             }
 
-            const h4_2 = document.createElement('h4')
-            h4_2.textContent = 'Tạm ứng ngoài chuyến'
-            h4_2.style.margin = '16px 0 8px'
-            body.appendChild(h4_2)
-
-            if (advancesData.length === 0) {
-                const p = document.createElement('p')
-                p.textContent = 'Không có tạm ứng ngoài chuyến'
-                p.style.color = 'var(--text-muted)'
-                body.appendChild(p)
-            } else {
-                const table2 = document.createElement('table')
-                const thead2 = document.createElement('thead')
-                const headRow2 = document.createElement('tr')
-                ;['Tháng', 'Số tiền', 'Ghi chú'].forEach(label => {
-                    const th = document.createElement('th')
-                    th.textContent = label
-                    headRow2.appendChild(th)
-                })
-                thead2.appendChild(headRow2)
-                const tbody2 = document.createElement('tbody')
-                advancesData.forEach(a => {
-                    const row = document.createElement('tr')
-                    ;[a.thang || '-', formatMoney(a.so_tien || 0), a.ghi_chu || '-'].forEach((val, i) => {
-                        const td = document.createElement('td')
-                        td.textContent = val
-                        if (i === 1) td.style.color = 'var(--danger)'
-                        row.appendChild(td)
-                    })
-                    tbody2.appendChild(row)
-                })
-                table2.append(thead2, tbody2)
-                body.appendChild(table2)
+            const badgeStyle = {
+                trip_advance: 'background:#e0e0e0;color:#555;padding:2px 8px;border-radius:12px;font-size:12px;white-space:nowrap',
+                refund:       'background:#e8f5e9;color:#27ae60;padding:2px 8px;border-radius:12px;font-size:12px;white-space:nowrap',
+                advance:      'background:#fff3e0;color:#e67e22;padding:2px 8px;border-radius:12px;font-size:12px;white-space:nowrap'
             }
+            const badgeLabel = { trip_advance: 'Tạm ứng chuyến', refund: 'Hoàn ứng', advance: 'Tạm ứng ngoài' }
 
-            const totalDiv = document.createElement('div')
-            totalDiv.style.cssText = 'margin-top:16px;font-weight:bold;font-size:16px;border-top:2px solid var(--border);padding-top:12px'
-            totalDiv.textContent = 'Số dư đang giữ: '
-            const totalSpan = document.createElement('span')
-            totalSpan.textContent = formatMoney(balance)
-            totalSpan.style.color = balance > 0 ? 'var(--danger)' : 'var(--success)'
-            totalDiv.appendChild(totalSpan)
-            body.appendChild(totalDiv)
+            const table = document.createElement('table')
+            const thead = document.createElement('thead')
+            const headRow = document.createElement('tr')
+            ;['Ngày', 'Loại', 'Mô tả', 'Số tiền', 'Số dư'].forEach(label => {
+                const th = document.createElement('th')
+                th.textContent = label
+                headRow.appendChild(th)
+            })
+            thead.appendChild(headRow)
+
+            const tbody = document.createElement('tbody')
+            let running_balance = 0
+            entries.forEach(entry => {
+                running_balance += entry.sign * entry.amount
+
+                const d = new Date(entry.date)
+                const dd = String(d.getDate()).padStart(2, '0')
+                const mm = String(d.getMonth() + 1).padStart(2, '0')
+                const yy = String(d.getFullYear()).slice(-2)
+
+                const row = document.createElement('tr')
+
+                const dateTd = document.createElement('td')
+                dateTd.textContent = `${dd}/${mm}/${yy}`
+                row.appendChild(dateTd)
+
+                const typeTd = document.createElement('td')
+                const badge = document.createElement('span')
+                badge.textContent = badgeLabel[entry.type] || entry.type
+                badge.style.cssText = badgeStyle[entry.type] || ''
+                typeTd.appendChild(badge)
+                row.appendChild(typeTd)
+
+                const labelTd = document.createElement('td')
+                labelTd.textContent = entry.label
+                row.appendChild(labelTd)
+
+                const amountTd = document.createElement('td')
+                amountTd.textContent = (entry.sign === 1 ? '+' : '-') + formatMoney(entry.amount)
+                amountTd.style.color = entry.sign === 1 ? 'var(--danger)' : 'var(--success)'
+                amountTd.style.fontWeight = 'bold'
+                row.appendChild(amountTd)
+
+                const balanceTd = document.createElement('td')
+                balanceTd.textContent = formatMoney(running_balance)
+                balanceTd.style.color = running_balance > 0 ? 'var(--danger)' : 'var(--success)'
+                balanceTd.style.fontWeight = 'bold'
+                row.appendChild(balanceTd)
+
+                tbody.appendChild(row)
+            })
+
+            const final_balance = running_balance
+            const summaryRow = document.createElement('tr')
+            ;['Tổng đang giữ', '—', '—', '—', formatMoney(final_balance)].forEach((val, idx) => {
+                const td = document.createElement('td')
+                td.textContent = val
+                td.style.fontWeight = 'bold'
+                td.style.borderTop = '3px solid var(--border)'
+                td.style.paddingTop = '12px'
+                if (idx === 0) td.style.fontSize = '15px'
+                if (idx === 4) td.style.color = final_balance > 0 ? 'var(--danger)' : 'var(--success)'
+                summaryRow.appendChild(td)
+            })
+            tbody.appendChild(summaryRow)
+
+            table.append(thead, tbody)
+            body.appendChild(table)
         }
 
         function closeBalanceModal() {
