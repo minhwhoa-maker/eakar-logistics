@@ -12,10 +12,13 @@
 <body>
     <div class="header">
         <button class="hamburger-btn" id="hamburger-btn">☰</button>
-        <h2>🚛 <span class="header-text">Quản lý xe</span></h2>
-        <div class="header-nav-desktop" style="display:flex; gap: 10px">
-            <button class="btn" onclick="window.location.href='owner-dashboard.html'">← Trang chủ</button>
-            <button class="btn btn-logout" onclick="logout()">Logout</button>
+        <h2>🚛 <span class="header-text">Xe</span></h2>
+        <div style="display:flex; gap:10px; align-items:center;">
+            <button id="btn-notify" class="btn" onclick="toggleNotifyPanel()">🔔</button>
+            <div class="header-nav-desktop" style="display:flex; gap: 10px">
+                <button class="btn" onclick="window.location.href='owner-dashboard.html'">← Trang chủ</button>
+                <button class="btn btn-logout" onclick="logout()">Logout</button>
+            </div>
         </div>
     </div>
     <div class="hamburger-menu" id="hamburger-menu">
@@ -24,6 +27,37 @@
         <a href="luong-thang.html">💰 Bảng lương</a>
         <div class="menu-divider"></div>
         <button class="menu-logout" id="menu-logout">🚪 Đăng xuất</button>
+    </div>
+    <div id="notify-panel" style="display:none;position:fixed;top:64px;right:16px;z-index:500;background:var(--white);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;min-width:260px;">
+        <h4 style="margin:0 0 12px;font-size:0.95em">🔔 Cài đặt thông báo</h4>
+        <div class="notify-row">
+            <span>🚛 Chuyến mới bắt đầu</span>
+            <label class="toggle">
+                <input type="checkbox" id="notif-new-trip" onchange="saveNotifySetting('notify_new_trip', this.checked)">
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="notify-row">
+            <span>✅ Chuyến hoàn thành</span>
+            <label class="toggle">
+                <input type="checkbox" id="notif-complete" onchange="saveNotifySetting('notify_complete', this.checked)">
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="notify-row">
+            <span>💰 Chi phí mới</span>
+            <label class="toggle">
+                <input type="checkbox" id="notif-expense" onchange="saveNotifySetting('notify_expense', this.checked)">
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="notify-row">
+            <span>🔧 Báo bảo dưỡng</span>
+            <label class="toggle">
+                <input type="checkbox" id="notif-maintenance" onchange="saveNotifySetting('notify_maintenance', this.checked)">
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
     </div>
     <div class="container">
         <div class="card">
@@ -778,11 +812,67 @@
             window.location.href = 'bai10.html'
         }
 
+        const VAPID_PUBLIC_KEY = 'BJO2an5FL6G-ROpD5_krG8QteQJW2aiTNR-GDEhAh4mMC1rX10gDmMDjaXpUcHTsgAQpzZNVdVUdpwE2XvVr070'
+
+        function urlBase64ToUint8Array(b64) {
+            const padding = '='.repeat((4 - b64.length % 4) % 4)
+            const base64 = (b64 + padding).replace(/-/g, '+').replace(/_/g, '/')
+            const raw = atob(base64)
+            return Uint8Array.from([...raw].map(c => c.charCodeAt(0)))
+        }
+
+        async function setupPushNotifications(userId) {
+            if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+            try {
+                const permission = await Notification.requestPermission()
+                if (permission !== 'granted') return
+                const reg = await navigator.serviceWorker.ready
+                const vapidKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+                const existing = await reg.pushManager.getSubscription()
+                const sub = existing || await reg.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: vapidKey
+                })
+                await fetch('/api/subscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId, subscription: sub.toJSON() })
+                })
+            } catch (e) {
+                console.error('Push setup error:', e)
+            }
+        }
+
+        async function loadNotifySettings() {
+            const { data } = await sb
+                .from('notify_settings')
+                .select('notify_new_trip, notify_complete, notify_expense, notify_maintenance')
+                .eq('user_id', ownerProfileId)
+                .maybeSingle()
+            document.getElementById('notif-new-trip').checked    = data ? data.notify_new_trip    : true
+            document.getElementById('notif-complete').checked     = data ? data.notify_complete     : true
+            document.getElementById('notif-expense').checked      = data ? data.notify_expense      : true
+            document.getElementById('notif-maintenance').checked  = data ? data.notify_maintenance  : true
+        }
+
+        async function saveNotifySetting(key, value) {
+            console.log('saveNotifySetting', key, value, ownerProfileId)
+            await sb.from('notify_settings')
+                .upsert({ user_id: ownerProfileId, [key]: value }, { onConflict: 'user_id' })
+        }
+
+        function toggleNotifyPanel() {
+            const p = document.getElementById('notify-panel')
+            p.style.display = p.style.display === 'none' ? 'block' : 'none'
+        }
+
         async function init() {
             setVehicleMessage('Đang tải ...')
             const auth = await requireRole(sb, 'owner')
             if (!auth) return
             ownerProfileId = auth.profile.id
+            loadNotifySettings()
+            setupPushNotifications(ownerProfileId)
             await loadDrivers()
             await loadVehicles()
             document.getElementById('new-bien-so').addEventListener('blur', () => {
@@ -812,6 +902,10 @@
             })
             document.getElementById('menu-logout').addEventListener('click', logout)
         })()
+        document.addEventListener('click', e => {
+            if (!e.target.closest('#notify-panel') && !e.target.closest('button[onclick="toggleNotifyPanel()"]'))
+                document.getElementById('notify-panel').style.display = 'none'
+        })
     </script>
     <div class="toast" id="toast"></div>
 
