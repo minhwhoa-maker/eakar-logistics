@@ -150,6 +150,43 @@
         khac:   '📦 Khác'
     }
 
+    async function calcDriverBalance(sb, ownerId, driverId) {
+        const { data: trips } = await sb.from('trips')
+            .select('id, tam_ung, hoan_ung')
+            .eq('owner_id', ownerId)
+            .eq('tai_xe_id', driverId)
+            .eq('trang_thai', 'hoan_thanh')
+        const tam_ung_trips = (trips || []).reduce((s, t) => s + (Number(t.tam_ung) || 0), 0)
+        const hoan_ung_trips = (trips || []).reduce((s, t) => s + (Number(t.hoan_ung) || 0), 0)
+
+        const { data: advances } = await sb.from('tam_ung_thang')
+            .select('so_tien')
+            .eq('owner_id', ownerId)
+            .eq('tai_xe_id', driverId)
+        const tam_ung_thang_total = (advances || []).reduce((s, a) => s + (Number(a.so_tien) || 0), 0)
+
+        const tripIds = (trips || []).map(t => t.id)
+        const { data: activeTrips } = await sb.from('trips')
+            .select('id')
+            .eq('owner_id', ownerId)
+            .eq('tai_xe_id', driverId)
+            .eq('trang_thai', 'dang_chay')
+        const allTripIds = [...tripIds, ...(activeTrips || []).map(t => t.id)]
+
+        let chi_phi_driver_paid = 0
+        if (allTripIds.length > 0) {
+            const { data: expenses } = await sb.from('chi_phi_chuyen')
+                .select('so_tien')
+                .in('trip_id', allTripIds)
+                .eq('nguon_tien', 'driver_paid')
+                .eq('is_legacy', false)
+            chi_phi_driver_paid = (expenses || []).reduce((s, e) => s + (Number(e.so_tien) || 0), 0)
+        }
+
+        const balance = tam_ung_trips + tam_ung_thang_total - hoan_ung_trips - chi_phi_driver_paid
+        return { balance, breakdown: { tam_ung_trips, hoan_ung_trips, tam_ung_thang: tam_ung_thang_total, chi_phi_driver_paid } }
+    }
+
     // ── Tab ──────────────────────────────────────────────────────────
     function switchTab(tab) {
         const isDang = tab === 'dang_chay'
@@ -161,7 +198,7 @@
     }
 
     // ── Form management ───────────────────────────────────────────────
-    function openForm(formId) {
+    async function openForm(formId) {
         if (activeFormId !== null) {
             const oldForm = document.querySelector(`[data-form-id="${activeFormId}"]`)
             if (oldForm) oldForm.style.display = 'none'
@@ -171,7 +208,35 @@
         }
         activeFormId = formId
         const form = document.querySelector(`[data-form-id="${formId}"]`)
-        if (form) form.style.display = 'block'
+        if (!form) return
+        form.style.display = 'block'
+
+        if (formId.startsWith('add-')) {
+            const balanceCard = form.querySelector('[data-balance-card="true"]')
+            const previewDiv = form.querySelector('[data-balance-preview="true"]')
+            const nguonSelect = form.querySelector('[data-field="nguon_tien"]')
+            const soTienInput = form.querySelector('[data-field="so_tien"]')
+            if (balanceCard) {
+                balanceCard.textContent = '💰 Đang tải số dư...'
+                try {
+                    const { balance } = await calcDriverBalance(sb, currentOwnerId, currentProfileId)
+                    form.dataset.currentBalance = String(balance)
+                    if (balance > 0) {
+                        balanceCard.innerHTML = `💰 Bạn đang giữ: <strong style="color:var(--danger)">${formatMoney(balance)}</strong> của chủ`
+                    } else if (balance < 0) {
+                        balanceCard.innerHTML = `⚠️ Chủ đang nợ bạn: <strong style="color:var(--success)">${formatMoney(Math.abs(balance))}</strong>`
+                    } else {
+                        balanceCard.innerHTML = `✓ Số dư: <strong>0 đ</strong> (sạch nợ)`
+                    }
+                } catch (e) {
+                    balanceCard.textContent = '⚠️ Không tải được số dư'
+                    form.dataset.currentBalance = '0'
+                }
+                if (nguonSelect) nguonSelect.disabled = false
+                if (soTienInput) soTienInput.disabled = false
+                if (previewDiv) previewDiv.textContent = ''
+            }
+        }
     }
 
     function closeActiveForm() {
@@ -499,6 +564,11 @@
         wrap.setAttribute('data-form-id', 'add-' + tripId)
         wrap.style.cssText = 'display:none;border-top:1px solid var(--border);padding-top:12px;margin-top:4px'
 
+        const balanceCard = document.createElement('div')
+        balanceCard.setAttribute('data-balance-card', 'true')
+        balanceCard.style.cssText = 'background:var(--bg);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:12px;font-size:0.9em'
+        balanceCard.textContent = '💰 Đang tải số dư...'
+
         const h4 = document.createElement('h4')
         h4.style.cssText = 'margin-bottom:10px;color:var(--primary)'
         h4.textContent = 'Thêm chi phí'
@@ -518,6 +588,26 @@
         })
         loaiGroup.append(loaiLabel, loaiSelect)
 
+        const nguonGroup = document.createElement('div')
+        nguonGroup.className = 'form-group'
+        const nguonLabel = document.createElement('label')
+        nguonLabel.textContent = 'Nguồn tiền'
+        const nguonSelect = document.createElement('select')
+        nguonSelect.setAttribute('data-field', 'nguon_tien')
+        nguonSelect.style.cssText = 'width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:15px;color:#1a1a2e;background:white'
+        nguonSelect.disabled = true
+        const placeholderOpt = document.createElement('option')
+        placeholderOpt.value = ''
+        placeholderOpt.textContent = '-- Chọn nguồn tiền --'
+        const driverOpt = document.createElement('option')
+        driverOpt.value = 'driver_paid'
+        driverOpt.textContent = '👤 Tôi tự chi (móc tạm ứng)'
+        const ownerOpt = document.createElement('option')
+        ownerOpt.value = 'owner_paid'
+        ownerOpt.textContent = '🏢 Chủ chuyển khoản'
+        nguonSelect.append(placeholderOpt, driverOpt, ownerOpt)
+        nguonGroup.append(nguonLabel, nguonSelect)
+
         const soTienGroup = document.createElement('div')
         soTienGroup.className = 'form-group'
         const soTienLabel = document.createElement('label')
@@ -525,8 +615,32 @@
         const soTienInput = document.createElement('input')
         soTienInput.type = 'number'
         soTienInput.setAttribute('data-field', 'so_tien')
+        soTienInput.disabled = true
         soTienGroup.append(soTienLabel, soTienInput)
         addMoneyHint(soTienInput)
+
+        const previewDiv = document.createElement('div')
+        previewDiv.setAttribute('data-balance-preview', 'true')
+        previewDiv.style.cssText = 'font-size:0.85em;color:var(--text-muted);padding:4px 0 8px;min-height:1.4em'
+        previewDiv.textContent = '(đang tải số dư...)'
+
+        function updatePreview() {
+            const currentBalance = Number(wrap.dataset.currentBalance || 0)
+            const rawVal = soTienInput.dataset.rawValue || soTienInput.value.replace(/\./g, '')
+            const so_tien = Number(rawVal) || 0
+            const nguon = nguonSelect.value
+            if (!nguon || !so_tien) { previewDiv.textContent = ''; return }
+            if (nguon === 'owner_paid') {
+                previewDiv.innerHTML = `Sau khi lưu: <strong>${formatMoney(currentBalance)}</strong> <span style="color:var(--text-muted)">(không trừ tạm ứng — chủ chi)</span>`
+            } else {
+                const newBalance = currentBalance - so_tien
+                const color = newBalance < 0 ? 'var(--danger)' : (newBalance === 0 ? 'var(--text-muted)' : 'var(--success)')
+                const note = newBalance < 0 ? ' (chủ sẽ nợ bạn)' : ''
+                previewDiv.innerHTML = `Sau khi lưu: <strong style="color:${color}">${formatMoney(newBalance)}</strong>${note}`
+            }
+        }
+        nguonSelect.addEventListener('change', updatePreview)
+        soTienInput.addEventListener('input', updatePreview)
 
         const moTaGroup = document.createElement('div')
         moTaGroup.className = 'form-group'
@@ -557,7 +671,7 @@
         btnCancel.onclick = closeActiveForm
         btnRow.append(btnSave, btnCancel)
 
-        wrap.append(h4, loaiGroup, soTienGroup, moTaGroup, uploadGroup, btnRow)
+        wrap.append(balanceCard, h4, loaiGroup, nguonGroup, soTienGroup, previewDiv, moTaGroup, uploadGroup, btnRow)
         return wrap
     }
 
@@ -570,6 +684,11 @@
         const so_tien = Number(soTienVal)
         if (!soTienVal || !Number.isFinite(so_tien) || so_tien < 0) {
             showToast('Vui lòng nhập số tiền hợp lệ', 'error')
+            return
+        }
+        const nguon_tien = form.querySelector('[data-field="nguon_tien"]').value
+        if (!nguon_tien) {
+            showToast('Vui lòng chọn nguồn tiền', 'error')
             return
         }
         if (!activeReceiptFile) {
@@ -602,7 +721,8 @@
             trip_id: tripId, loai, mo_ta: mo_ta || null, so_tien, anh_url,
             lat: loc.lat, lng: loc.lng,
             anh_realtime: activeReceiptIsRealtime,
-            is_legacy: false
+            is_legacy: false,
+            nguon_tien
         })
         if (error) {
             showToast('Lỗi: ' + error.message, 'error')
@@ -711,6 +831,23 @@
         })
         loaiGroup.append(loaiLabel, loaiSelect)
 
+        const nguonEditGroup = document.createElement('div')
+        nguonEditGroup.className = 'form-group'
+        const nguonEditLabel = document.createElement('label')
+        nguonEditLabel.textContent = 'Nguồn tiền'
+        const nguonEditSelect = document.createElement('select')
+        nguonEditSelect.setAttribute('data-field', 'nguon_tien')
+        nguonEditSelect.style.cssText = 'width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:15px;color:#1a1a2e;background:white'
+        const ePh = document.createElement('option')
+        ePh.value = ''; ePh.textContent = '-- Chọn nguồn tiền --'
+        const eDr = document.createElement('option')
+        eDr.value = 'driver_paid'; eDr.textContent = '👤 Tôi tự chi (móc tạm ứng)'
+        const eOw = document.createElement('option')
+        eOw.value = 'owner_paid'; eOw.textContent = '🏢 Chủ chuyển khoản'
+        nguonEditSelect.append(ePh, eDr, eOw)
+        if (exp.nguon_tien) nguonEditSelect.value = exp.nguon_tien
+        nguonEditGroup.append(nguonEditLabel, nguonEditSelect)
+
         const soTienGroup = document.createElement('div')
         soTienGroup.className = 'form-group'
         const soTienLabel = document.createElement('label')
@@ -762,7 +899,7 @@
         btnCancel.onclick = closeActiveForm
         btnRow.append(btnSave, btnCancel)
 
-        wrap.append(loaiGroup, soTienGroup, moTaGroup, uploadGroup, btnRow)
+        wrap.append(loaiGroup, nguonEditGroup, soTienGroup, moTaGroup, uploadGroup, btnRow)
         return wrap
     }
 
@@ -795,6 +932,8 @@
         } else if (form.dataset.photoRemoved === 'true') {
             updatePayload.anh_realtime = null
         }
+        const nguon_tien_val = form.querySelector('[data-field="nguon_tien"]').value
+        updatePayload.nguon_tien = nguon_tien_val || null
         const { error } = await sb.from('chi_phi_chuyen')
             .update(updatePayload)
             .eq('id', expenseId)

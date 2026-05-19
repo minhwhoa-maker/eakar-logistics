@@ -432,7 +432,12 @@
 
                 const amountEl = document.createElement('span')
                 amountEl.style.cssText = 'color:var(--danger);font-weight:600'
-                amountEl.textContent = formatMoney(exp.so_tien)
+                let nguonIcon = ''
+                if (exp.nguon_tien === 'driver_paid') nguonIcon = '👤'
+                else if (exp.nguon_tien === 'owner_paid') nguonIcon = '🏢'
+                amountEl.textContent = (nguonIcon ? nguonIcon + ' ' : '') + formatMoney(exp.so_tien)
+                amountEl.title = exp.nguon_tien === 'driver_paid' ? 'Tài xế tự chi (móc tạm ứng)' :
+                                 exp.nguon_tien === 'owner_paid' ? 'Chủ chuyển khoản trực tiếp' : ''
 
                 const actions = document.createElement('div')
                 actions.style.cssText = 'display:flex;gap:4px;align-items:center'
@@ -511,6 +516,22 @@
         })
         loaiGroup.append(loaiLabel, loaiSelect)
 
+        const nguonGroup = document.createElement('div')
+        nguonGroup.className = 'form-group'
+        const nguonLabel = document.createElement('label')
+        nguonLabel.textContent = 'Nguồn tiền'
+        const nguonSelect = document.createElement('select')
+        nguonSelect.setAttribute('data-field', 'nguon_tien')
+        nguonSelect.style.cssText = 'width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:15px;color:#1a1a2e;background:white'
+        const nPh = document.createElement('option')
+        nPh.value = ''; nPh.textContent = '-- Chọn nguồn tiền --'
+        const nDr = document.createElement('option')
+        nDr.value = 'driver_paid'; nDr.textContent = '👤 Tài xế tự chi'
+        const nOw = document.createElement('option')
+        nOw.value = 'owner_paid'; nOw.textContent = '🏢 Chủ chuyển khoản'
+        nguonSelect.append(nPh, nDr, nOw)
+        nguonGroup.append(nguonLabel, nguonSelect)
+
         const soTienGroup = document.createElement('div')
         soTienGroup.className = 'form-group'
         const soTienLabel = document.createElement('label')
@@ -550,7 +571,7 @@
         btnCancel.onclick = closeActiveForm
         btnRow.append(btnSave, btnCancel)
 
-        wrap.append(h4, loaiGroup, soTienGroup, moTaGroup, uploadGroup, btnRow)
+        wrap.append(h4, loaiGroup, nguonGroup, soTienGroup, moTaGroup, uploadGroup, btnRow)
         return wrap
     }
 
@@ -563,6 +584,10 @@
         const so_tien = Number(soTienVal)
         if (!soTienVal || !Number.isFinite(so_tien) || so_tien < 0) {
             showToast('Vui lòng nhập số tiền hợp lệ', 'error'); return
+        }
+        const nguon_tien = form.querySelector('[data-field="nguon_tien"]').value
+        if (!nguon_tien) {
+            showToast('Vui lòng chọn nguồn tiền', 'error'); return
         }
         if (!activeReceiptFile) {
             showToast('Vui lòng chụp ảnh hóa đơn/bằng chứng', 'error'); return
@@ -593,7 +618,8 @@
             trip_id: currentTrip.id, loai, mo_ta: mo_ta || null, so_tien, anh_url,
             lat: loc.lat, lng: loc.lng,
             anh_realtime: activeReceiptIsRealtime,
-            is_legacy: false
+            is_legacy: false,
+            nguon_tien
         })
         if (error) {
             showToast('Lỗi: ' + error.message, 'error')
@@ -630,6 +656,23 @@
             loaiSelect.appendChild(opt)
         })
         loaiGroup.append(loaiLabel, loaiSelect)
+
+        const nguonEditGroup = document.createElement('div')
+        nguonEditGroup.className = 'form-group'
+        const nguonEditLabel = document.createElement('label')
+        nguonEditLabel.textContent = 'Nguồn tiền'
+        const nguonEditSelect = document.createElement('select')
+        nguonEditSelect.setAttribute('data-field', 'nguon_tien')
+        nguonEditSelect.style.cssText = 'width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:15px;color:#1a1a2e;background:white'
+        const ePh = document.createElement('option')
+        ePh.value = ''; ePh.textContent = '-- Chọn nguồn tiền --'
+        const eDr = document.createElement('option')
+        eDr.value = 'driver_paid'; eDr.textContent = '👤 Tài xế tự chi'
+        const eOw = document.createElement('option')
+        eOw.value = 'owner_paid'; eOw.textContent = '🏢 Chủ chuyển khoản'
+        nguonEditSelect.append(ePh, eDr, eOw)
+        if (exp.nguon_tien) nguonEditSelect.value = exp.nguon_tien
+        nguonEditGroup.append(nguonEditLabel, nguonEditSelect)
 
         const soTienGroup = document.createElement('div')
         soTienGroup.className = 'form-group'
@@ -685,7 +728,7 @@
         btnCancel.onclick = closeActiveForm
         btnRow.append(btnSave, btnCancel)
 
-        wrap.append(loaiGroup, soTienGroup, moTaGroup, uploadGroup, btnRow)
+        wrap.append(loaiGroup, nguonEditGroup, soTienGroup, moTaGroup, uploadGroup, btnRow)
         return wrap
     }
 
@@ -714,6 +757,8 @@
         } else if (form.dataset.photoRemoved === 'true') {
             updatePayload.anh_realtime = null
         }
+        const nguon_tien_val = form.querySelector('[data-field="nguon_tien"]').value
+        updatePayload.nguon_tien = nguon_tien_val || null
         const { error } = await sb.from('chi_phi_chuyen')
             .update(updatePayload)
             .eq('id', expenseId)

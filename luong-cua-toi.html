@@ -51,6 +51,67 @@
     let currentProfileId = null
     let currentOwnerId = null
 
+    async function calcDriverBalance(sb, ownerId, driverId) {
+        const { data: completedTrips } = await sb.from('trips')
+            .select('id, tam_ung, hoan_ung')
+            .eq('owner_id', ownerId)
+            .eq('tai_xe_id', driverId)
+            .eq('trang_thai', 'hoan_thanh')
+        const tam_ung_trips = (completedTrips || []).reduce((s, t) => s + (Number(t.tam_ung) || 0), 0)
+        const hoan_ung_trips = (completedTrips || []).reduce((s, t) => s + (Number(t.hoan_ung) || 0), 0)
+
+        const { data: advances } = await sb.from('tam_ung_thang')
+            .select('so_tien')
+            .eq('owner_id', ownerId)
+            .eq('tai_xe_id', driverId)
+        const tam_ung_thang_total = (advances || []).reduce((s, a) => s + (Number(a.so_tien) || 0), 0)
+
+        const { data: allTrips } = await sb.from('trips')
+            .select('id')
+            .eq('owner_id', ownerId)
+            .eq('tai_xe_id', driverId)
+        const allTripIds = (allTrips || []).map(t => t.id)
+        let chi_phi_driver_paid = 0
+        if (allTripIds.length > 0) {
+            const { data: expenses } = await sb.from('chi_phi_chuyen')
+                .select('so_tien')
+                .in('trip_id', allTripIds)
+                .eq('nguon_tien', 'driver_paid')
+                .eq('is_legacy', false)
+            chi_phi_driver_paid = (expenses || []).reduce((s, e) => s + (Number(e.so_tien) || 0), 0)
+        }
+
+        const balance = tam_ung_trips + tam_ung_thang_total - hoan_ung_trips - chi_phi_driver_paid
+        return { balance, breakdown: { tam_ung_trips, tam_ung_thang_total, hoan_ung_trips, chi_phi_driver_paid } }
+    }
+
+    async function loadBalanceCard() {
+        const container = document.getElementById('balance-container')
+        container.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:12px">Đang tải số dư...</p>'
+        try {
+            const { balance } = await calcDriverBalance(sb, currentOwnerId, currentProfileId)
+            const card = document.createElement('div')
+            card.className = 'card'
+            card.style.marginBottom = '12px'
+            const color = balance > 0 ? 'var(--warning)' : balance < 0 ? 'var(--success)' : 'var(--text)'
+            const label = balance > 0 ? 'Đang giữ tạm ứng' : balance < 0 ? 'Chủ còn nợ bạn' : 'Huề'
+            const amountEl = document.createElement('div')
+            amountEl.style.cssText = 'font-size:1.4em;font-weight:700;color:' + color
+            amountEl.textContent = formatMoney(Math.abs(balance))
+            const labelEl = document.createElement('div')
+            labelEl.style.cssText = 'font-size:0.8em;color:' + color + ';margin-top:2px'
+            labelEl.textContent = label
+            const titleEl = document.createElement('div')
+            titleEl.style.cssText = 'font-size:0.85em;color:var(--text-muted);margin-bottom:4px'
+            titleEl.textContent = '💰 Số dư tạm ứng'
+            card.append(titleEl, amountEl, labelEl)
+            container.innerHTML = ''
+            container.appendChild(card)
+        } catch {
+            container.innerHTML = '<p style="color:var(--danger);text-align:center;padding:12px">⚠️ Không tải được số dư</p>'
+        }
+    }
+
     function getMonthRange(thangStr) {
         const [year, mon] = thangStr.split('-').map(Number)
         const startISO = thangStr + '-01T00:00:00'
@@ -145,7 +206,7 @@
     }
 
     async function loadLuong() {
-        const container = document.getElementById('main-content')
+        const container = document.getElementById('luong-container')
 
         const { data: rows, error } = await sb.from('luong_thang')
             .select('*')
@@ -241,6 +302,15 @@
             return
         }
 
+        const mainContent = document.getElementById('main-content')
+        mainContent.innerHTML = ''
+        const balanceContainer = document.createElement('div')
+        balanceContainer.id = 'balance-container'
+        const luongContainer = document.createElement('div')
+        luongContainer.id = 'luong-container'
+        mainContent.append(balanceContainer, luongContainer)
+
+        loadBalanceCard()
         await loadLuong()
     }
 

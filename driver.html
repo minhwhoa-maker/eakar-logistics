@@ -104,6 +104,43 @@
         const sb = createSb()
         let ownerProfileId = null
 
+        async function calcDriverBalance(sb, ownerId, driverId) {
+            const { data: trips } = await sb.from('trips')
+                .select('id, tam_ung, hoan_ung')
+                .eq('owner_id', ownerId)
+                .eq('tai_xe_id', driverId)
+                .eq('trang_thai', 'hoan_thanh')
+            const tam_ung_trips = (trips || []).reduce((s, t) => s + (Number(t.tam_ung) || 0), 0)
+            const hoan_ung_trips = (trips || []).reduce((s, t) => s + (Number(t.hoan_ung) || 0), 0)
+
+            const { data: advances } = await sb.from('tam_ung_thang')
+                .select('so_tien')
+                .eq('owner_id', ownerId)
+                .eq('tai_xe_id', driverId)
+            const tam_ung_thang_total = (advances || []).reduce((s, a) => s + (Number(a.so_tien) || 0), 0)
+
+            const tripIds = (trips || []).map(t => t.id)
+            const { data: activeTrips } = await sb.from('trips')
+                .select('id')
+                .eq('owner_id', ownerId)
+                .eq('tai_xe_id', driverId)
+                .eq('trang_thai', 'dang_chay')
+            const allTripIds = [...tripIds, ...(activeTrips || []).map(t => t.id)]
+
+            let chi_phi_driver_paid = 0
+            if (allTripIds.length > 0) {
+                const { data: expenses } = await sb.from('chi_phi_chuyen')
+                    .select('so_tien')
+                    .in('trip_id', allTripIds)
+                    .eq('nguon_tien', 'driver_paid')
+                    .eq('is_legacy', false)
+                chi_phi_driver_paid = (expenses || []).reduce((s, e) => s + (Number(e.so_tien) || 0), 0)
+            }
+
+            const balance = tam_ung_trips + tam_ung_thang_total - hoan_ung_trips - chi_phi_driver_paid
+            return { balance, breakdown: { tam_ung_trips, hoan_ung_trips, tam_ung_thang: tam_ung_thang_total, chi_phi_driver_paid } }
+        }
+
         function addCell(row, text) {
             const cell = document.createElement('td')
             cell.textContent = text
@@ -195,28 +232,14 @@
                 const xeMap = {}
                 ;(xeList || []).forEach(x => { xeMap[x.tai_xe_id] = x.bien_so })
 
-                const { data: allTrips, error: allTripsError } = await sb
-                    .from('trips')
-                    .select('tai_xe_id, tam_ung, hoan_ung')
-                    .eq('owner_id', ownerProfileId)
-                    .eq('trang_thai', 'hoan_thanh')
-                if (allTripsError) throw new Error(allTripsError.message)
-
-                const { data: allAdvances, error: allAdvancesError } = await sb
-                    .from('tam_ung_thang')
-                    .select('tai_xe_id, so_tien')
-                    .eq('owner_id', ownerProfileId)
-                if (allAdvancesError) throw new Error(allAdvancesError.message)
+                const balanceResults = await Promise.all(
+                    drivers.map(d => calcDriverBalance(sb, ownerProfileId, d.id))
+                )
 
                 const tbody = document.getElementById('driver-list')
                 tbody.textContent = ''
-                drivers.forEach(d => {
-                    const myAllTrips = (allTrips || []).filter(t => t.tai_xe_id === d.id)
-                    const totalTamUngTrips = myAllTrips.reduce((sum, t) => sum + (Number(t.tam_ung) || 0), 0)
-                    const totalHoanUngTrips = myAllTrips.reduce((sum, t) => sum + (Number(t.hoan_ung) || 0), 0)
-                    const myAllAdvances = (allAdvances || []).filter(a => a.tai_xe_id === d.id)
-                    const totalTamUngThang = myAllAdvances.reduce((sum, a) => sum + (Number(a.so_tien) || 0), 0)
-                    const balance = totalTamUngTrips + totalTamUngThang - totalHoanUngTrips
+                drivers.forEach((d, idx) => {
+                    const { balance } = balanceResults[idx]
 
                     const row = document.createElement('tr')
 
@@ -357,7 +380,15 @@
             body.textContent = 'Đang tải...'
             document.getElementById('balance-modal').style.display = 'flex'
 
-            const [tripsRes, advancesRes] = await Promise.all([
+            const { data: allDriverTrips } = await sb.from('trips')
+                .select('id, tuyen_duong')
+                .eq('owner_id', ownerProfileId)
+                .eq('tai_xe_id', driverId)
+            const tripMap = {}
+            ;(allDriverTrips || []).forEach(t => { tripMap[t.id] = t.tuyen_duong })
+            const allTripIds = (allDriverTrips || []).map(t => t.id)
+
+            const [tripsRes, advancesRes, expensesRes] = await Promise.all([
                 sb.from('trips')
                     .select('id, ngay_ket_thuc, tuyen_duong, tam_ung, hoan_ung')
                     .eq('owner_id', ownerProfileId)
@@ -367,7 +398,14 @@
                 sb.from('tam_ung_thang')
                     .select('id, thang, so_tien, ghi_chu')
                     .eq('owner_id', ownerProfileId)
-                    .eq('tai_xe_id', driverId)
+                    .eq('tai_xe_id', driverId),
+                allTripIds.length > 0
+                    ? sb.from('chi_phi_chuyen')
+                        .select('id, trip_id, loai, mo_ta, so_tien, created_at')
+                        .in('trip_id', allTripIds)
+                        .eq('nguon_tien', 'driver_paid')
+                        .eq('is_legacy', false)
+                    : Promise.resolve({ data: [] })
             ])
 
             if (tripsRes.error) { body.textContent = 'Lỗi: ' + tripsRes.error.message; return }
@@ -385,6 +423,13 @@
             ;(advancesRes.data || []).forEach(a => {
                 entries.push({ date: a.thang + '-01', type: 'advance', label: 'Tạm ứng' + (a.ghi_chu ? ': ' + a.ghi_chu : ''), amount: Number(a.so_tien), sign: +1 })
             })
+            ;(expensesRes.data || []).forEach(e => {
+                const loaiLabel = ({ xang: '⛽ Xăng', bai_xe: '🅿️ Bãi xe', khac: '📦 Khác' })[e.loai] || e.loai
+                const tuyen = tripMap[e.trip_id] || ''
+                const routeLabel = tuyen ? ' (' + tuyen + ')' : ''
+                const descLabel = e.mo_ta ? e.mo_ta : loaiLabel
+                entries.push({ date: e.created_at, type: 'expense_driver', label: 'Chi: ' + descLabel + routeLabel, amount: Number(e.so_tien), sign: -1 })
+            })
             entries.sort((a, b) => new Date(a.date) - new Date(b.date))
 
             body.textContent = ''
@@ -398,11 +443,12 @@
             }
 
             const badgeStyle = {
-                trip_advance: 'background:#e0e0e0;color:#555;padding:2px 8px;border-radius:12px;font-size:12px;white-space:nowrap',
-                refund:       'background:#e8f5e9;color:#27ae60;padding:2px 8px;border-radius:12px;font-size:12px;white-space:nowrap',
-                advance:      'background:#fff3e0;color:#e67e22;padding:2px 8px;border-radius:12px;font-size:12px;white-space:nowrap'
+                trip_advance:   'background:#e0e0e0;color:#555;padding:2px 8px;border-radius:12px;font-size:12px;white-space:nowrap',
+                refund:         'background:#e8f5e9;color:#27ae60;padding:2px 8px;border-radius:12px;font-size:12px;white-space:nowrap',
+                advance:        'background:#fff3e0;color:#e67e22;padding:2px 8px;border-radius:12px;font-size:12px;white-space:nowrap',
+                expense_driver: 'background:#ffebee;color:#c62828;padding:2px 8px;border-radius:12px;font-size:12px;white-space:nowrap'
             }
-            const badgeLabel = { trip_advance: 'Tạm ứng chuyến', refund: 'Hoàn ứng', advance: 'Tạm ứng ngoài' }
+            const badgeLabel = { trip_advance: 'Tạm ứng chuyến', refund: 'Hoàn ứng', advance: 'Tạm ứng ngoài', expense_driver: 'Chi phí tự chi' }
 
             const table = document.createElement('table')
             const thead = document.createElement('thead')
