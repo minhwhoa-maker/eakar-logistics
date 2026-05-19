@@ -37,7 +37,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - `shared.js` — JS utilities shared (xem dưới).
 - `luong-thang.html` — owner quản lý bảng lương tháng + xuất PDF phiếu lương. Toggle `cho_phep_xem_luong` trên `users` (owner row) cho phép driver xem lương. Query logic tách thành `fetchLuongData(thangStr)` (dùng chung cho cả render bảng và in PDF): select drivers với `id, full_name, sdt`, query xe, upsert `luong_thang` rows (auto-INSERT nếu chưa có, snapshot `luong_co_ban` từ xe, `ngay_lam=26`), query trips theo tháng. Bảng **13 cột**: Tên | Biển số | Lương CB | Ngày làm | Σ chuyến | Phụ cấp | Thưởng | Σ tạm ứng | Σ hoàn ứng | Khấu trừ | THỰC LĨNH | Sửa | **In phiếu**. PDF: `buildPayslipHTML(luongRow, driver, xe, trips, thangStr)` trả về DOM element (width 595px, toàn bộ inline style). `printPayslip()` dùng `html2canvas` (scale 2) + `jspdf.jsPDF` để download file đơn. `printAllPayslips()` loop qua tất cả drivers tạo 1 PDF nhiều trang. Nút "🖨️ In tất cả" ở header desktop + hamburger menu (`menu-print-all`). `slugify()` local helper: `.replace(/đ/g,'d').replace(/Đ/g,'d').normalize('NFD').replace(/[̀-ͯ]/g,'')...`. CDN: `jspdf@2.5.1` (UMD) → global `jspdf.jsPDF`; `html2canvas@1.4.1` → global `html2canvas`. Edit modal cập nhật `ngay_lam, phu_cap, thuong, khau_tru, ghi_chu`. `ownerProfileId` = `auth.profile.id`.
 - `luong-cua-toi.html` — driver xem lương của mình. Permission gate: query `users.owner_id` của driver → query `users.cho_phep_xem_luong` của owner; nếu false/null → hiện card đỏ "chưa bật". Hiện danh sách tháng dạng card (thực lĩnh lớn, nút Chi tiết → modal breakdown). `currentProfileId` = `auth.profile.id`.
-- `sw.js` + `manifest.json` — PWA, chỉ register từ `bai10.html`. STATIC_ASSETS chỉ gồm `bai10.html`, `style.css`, `manifest.json`, và icons — **`shared.js` và tất cả admin pages không được pre-cache**, chỉ được dynamic-cache khi đã navigate tới. Khi deploy thay đổi cho bất kỳ file nào trong STATIC_ASSETS, phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v20`) để invalidate cache cũ. Có push handler (hiện notification) + notificationclick handler (focus tab cũ hoặc mở tab mới tới URL trong `notification.data.url`).
+- `sw.js` + `manifest.json` — PWA, chỉ register từ `bai10.html`. STATIC_ASSETS chỉ gồm `bai10.html`, `style.css`, `manifest.json`, và icons — **`shared.js` và tất cả admin pages không được pre-cache**, chỉ được dynamic-cache khi đã navigate tới. Khi deploy thay đổi cho bất kỳ file nào trong STATIC_ASSETS, phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v21`) để invalidate cache cũ. Có push handler (hiện notification) + notificationclick handler (focus tab cũ hoặc mở tab mới tới URL trong `notification.data.url`).
 
 ### shared.js (BẮT BUỘC dùng cho mọi page mới)
 ```
@@ -165,7 +165,7 @@ xe             (id, owner_id, bien_so, loai_xe, nam_sx, trang_thai, tai_xe_id, l
                 -- gia_tri_luong: nếu khoan_chuyen → số VNĐ cố định; nếu phan_tram_doanh_thu → % (0–100)
 bao_duong      (id, owner_id, xe_id, ngay, loai, mo_ta, chi_phi, created_at,
                 bo_phan text, ngay_tiep_theo date,
-                anh_url text, lat float, lng float,
+                anh_url text, lat float, lng float, anh_realtime bool,
                 nguoi_nhap text, tai_xe_id uuid, trip_id uuid)
                 -- loai: 'hong_hoc' | 'linh_kien' | 'lop_xe' | 'dinh_ky'
                 -- bo_phan: nullable, tên bộ phận bảo dưỡng (vd: "Lốp trước trái")
