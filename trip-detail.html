@@ -35,10 +35,10 @@
     let currentTrip = null
     let activeFormId = null
     let activeReceiptFile = null
+    let activeReceiptIsRealtime = null
 
     const EXPENSE_TYPES = {
         xang:   '⛽ Xăng',
-        sua_xe: '🔧 Sửa xe',
         bai_xe: '🅿️ Bãi xe',
         khac:   '📦 Khác'
     }
@@ -70,6 +70,7 @@
             const oldForm = document.querySelector(`[data-form-id="${activeFormId}"]`)
             if (oldForm) oldForm.style.display = 'none'
             activeReceiptFile = null
+            activeReceiptIsRealtime = null
             activeFormId = null
         }
         activeFormId = formId
@@ -82,6 +83,7 @@
             const form = document.querySelector(`[data-form-id="${activeFormId}"]`)
             if (form) form.style.display = 'none'
             activeReceiptFile = null
+            activeReceiptIsRealtime = null
             activeFormId = null
         }
     }
@@ -94,6 +96,68 @@
         if (error) throw error
         const { data } = sb.storage.from('receipts').getPublicUrl(path)
         return data.publicUrl
+    }
+
+    // ── Money hint ────────────────────────────────────────────────────
+    function numberToVietnamese(n) {
+        if (n === 0) return 'không đồng'
+        const UNITS = ['', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín']
+        function readTens(t, u) {
+            if (t === 1) return 'mười' + (u > 0 ? ' ' + (u === 5 ? 'lăm' : UNITS[u]) : '')
+            return UNITS[t] + ' mươi' + (u > 0 ? ' ' + (u === 1 ? 'mốt' : u === 5 ? 'lăm' : UNITS[u]) : '')
+        }
+        function readThreeDigits(n) {
+            if (n === 0) return ''
+            const h = Math.floor(n / 100)
+            const t = Math.floor((n % 100) / 10)
+            const u = n % 10
+            if (h > 0) {
+                let r = UNITS[h] + ' trăm'
+                if (t === 0 && u > 0) r += ' lẻ ' + UNITS[u]
+                else if (t > 0) r += ' ' + readTens(t, u)
+                return r
+            }
+            return t > 0 ? readTens(t, u) : UNITS[u]
+        }
+        const ty = Math.floor(n / 1_000_000_000)
+        const trieu = Math.floor((n % 1_000_000_000) / 1_000_000)
+        const nghin = Math.floor((n % 1_000_000) / 1_000)
+        const remainder = n % 1_000
+        const parts = []
+        if (ty > 0) parts.push(readThreeDigits(ty) + ' tỷ')
+        if (trieu > 0) parts.push(readThreeDigits(trieu) + ' triệu')
+        if (nghin > 0) parts.push(readThreeDigits(nghin) + ' nghìn')
+        if (remainder > 0) parts.push(readThreeDigits(remainder))
+        const result = parts.join(' ') + ' đ'; return result.charAt(0).toUpperCase() + result.slice(1)
+    }
+
+    function addMoneyHint(input) {
+        const hint = document.createElement('small')
+        hint.style.cssText = 'color:var(--primary);font-size:0.85em;margin-top:4px;display:block;min-height:1.2em'
+        input.type = 'text'
+        input.addEventListener('input', () => {
+            const pos = input.selectionStart
+            const oldVal = input.value
+            let digitsBefore = 0
+            for (let i = 0; i < pos; i++) {
+                if (/\d/.test(oldVal[i])) digitsBefore++
+            }
+            const raw = input.value.replace(/\D/g, '')
+            input.dataset.rawValue = raw
+            const formatted = raw ? raw.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : ''
+            input.value = formatted
+            let count = 0
+            let newPos = formatted.length
+            for (let i = 0; i < formatted.length; i++) {
+                if (/\d/.test(formatted[i])) count++
+                if (count === digitsBefore) { newPos = i + 1; break }
+            }
+            input.setSelectionRange(newPos, newPos)
+            const n = Number(raw)
+            hint.textContent = (raw && Number.isFinite(n)) ? numberToVietnamese(n) : ''
+        })
+        input.insertAdjacentElement('afterend', hint)
+        return hint
     }
 
     function handleFileSelect(input) {
@@ -111,7 +175,7 @@
         reader.readAsDataURL(activeReceiptFile)
     }
 
-    function buildUploadGroup(onRemove) {
+    function buildUploadGroup(onRemove, options = {}) {
         const group = document.createElement('div')
         group.className = 'form-group'
 
@@ -123,13 +187,30 @@
         cameraInput.accept = 'image/*'
         cameraInput.setAttribute('capture', 'environment')
         cameraInput.className = 'upload-input'
-        cameraInput.onchange = e => handleFileSelect(e.target)
+        cameraInput.onchange = e => {
+            handleFileSelect(e.target)
+            if (e.target.files[0] && options.onPickRealtime) options.onPickRealtime(e.target.files[0])
+        }
 
-        const galleryInput = document.createElement('input')
-        galleryInput.type = 'file'
-        galleryInput.accept = 'image/*'
-        galleryInput.className = 'upload-input'
-        galleryInput.onchange = e => handleFileSelect(e.target)
+        let galleryInput
+        let btnGal
+
+        if (options.showGallery) {
+            galleryInput = document.createElement('input')
+            galleryInput.type = 'file'
+            galleryInput.accept = 'image/*'
+            galleryInput.className = 'upload-input'
+            galleryInput.onchange = e => {
+                handleFileSelect(e.target)
+                if (e.target.files[0] && options.onPickGallery) options.onPickGallery(e.target.files[0])
+            }
+
+            btnGal = document.createElement('button')
+            btnGal.type = 'button'
+            btnGal.className = 'btn-upload'
+            btnGal.innerHTML = '<span class="upload-icon">🖼️</span> Thư viện'
+            btnGal.onclick = () => galleryInput.click()
+        }
 
         const uploadBtns = document.createElement('div')
         uploadBtns.className = 'upload-buttons'
@@ -140,13 +221,8 @@
         btnCam.innerHTML = '<span class="upload-icon">📷</span> Chụp ảnh'
         btnCam.onclick = () => cameraInput.click()
 
-        const btnGal = document.createElement('button')
-        btnGal.type = 'button'
-        btnGal.className = 'btn-upload'
-        btnGal.innerHTML = '<span class="upload-icon">🖼️</span> Thư viện'
-        btnGal.onclick = () => galleryInput.click()
-
-        uploadBtns.append(btnCam, btnGal)
+        uploadBtns.appendChild(btnCam)
+        if (btnGal) uploadBtns.appendChild(btnGal)
 
         const preview = document.createElement('div')
         preview.className = 'receipt-preview'
@@ -162,7 +238,7 @@
         removeSpan.textContent = '✕ Xóa ảnh'
         removeSpan.onclick = () => {
             cameraInput.value = ''
-            galleryInput.value = ''
+            if (galleryInput) galleryInput.value = ''
             activeReceiptFile = null
             previewImg.src = ''
             preview.style.display = 'none'
@@ -170,7 +246,10 @@
         }
 
         preview.append(previewImg, removeSpan)
-        group.append(label, cameraInput, galleryInput, uploadBtns, preview)
+        const childrenOfGroup = [label, cameraInput]
+        if (galleryInput) childrenOfGroup.push(galleryInput)
+        childrenOfGroup.push(uploadBtns, preview)
+        group.append(...childrenOfGroup)
         return group
     }
 
@@ -360,7 +439,8 @@
 
                 if (exp.anh_url) {
                     const photoBtn = document.createElement('button')
-                    photoBtn.textContent = '📷'
+                    photoBtn.textContent = exp.anh_realtime === false ? '📷⚠️' : '📷'
+                    photoBtn.title = exp.anh_realtime === false ? 'Ảnh upload từ thư viện (không chụp realtime)' : 'Ảnh chụp realtime'
                     photoBtn.className = 'btn btn-sm btn-gray'
                     photoBtn.onclick = () => openImageModal(exp.anh_url)
                     actions.appendChild(photoBtn)
@@ -389,7 +469,16 @@
                     actions.append(editBtn, delBtn)
                 }
 
-                row.append(iconEl, descEl, amountEl, actions)
+                const items = [iconEl]
+                if (exp.is_legacy) {
+                    const legacyBadge = document.createElement('span')
+                    legacyBadge.textContent = '⚠️ Cũ'
+                    legacyBadge.title = 'Entry trước hệ thống bằng chứng — không có ảnh/GPS realtime'
+                    legacyBadge.style.cssText = 'background:#fff3cd;color:#856404;padding:2px 6px;border-radius:4px;font-size:0.75em;font-weight:600'
+                    items.push(legacyBadge)
+                }
+                items.push(descEl, amountEl, actions)
+                row.append(...items)
                 card.appendChild(row)
                 if (canEditExpenses()) card.appendChild(buildEditExpenseForm(exp))
             })
@@ -430,6 +519,7 @@
         soTienInput.type = 'number'
         soTienInput.setAttribute('data-field', 'so_tien')
         soTienGroup.append(soTienLabel, soTienInput)
+        addMoneyHint(soTienInput)
 
         const moTaGroup = document.createElement('div')
         moTaGroup.className = 'form-group'
@@ -440,7 +530,13 @@
         moTaInput.setAttribute('data-field', 'mo_ta')
         moTaGroup.append(moTaLabel, moTaInput)
 
-        const uploadGroup = buildUploadGroup(null)
+        const uploadGroup = buildUploadGroup(
+            () => { activeReceiptIsRealtime = null },
+            {
+                showGallery: false,
+                onPickRealtime: () => { activeReceiptIsRealtime = true }
+            }
+        )
 
         const btnRow = document.createElement('div')
         btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px'
@@ -461,25 +557,52 @@
     async function submitAddExpense() {
         const form = document.querySelector('[data-form-id="add-expense"]')
         const loai = form.querySelector('[data-field="loai"]').value
-        const soTienVal = form.querySelector('[data-field="so_tien"]').value
+        const soTienEl = form.querySelector('[data-field="so_tien"]')
+        const soTienVal = soTienEl.dataset.rawValue || soTienEl.value
         const mo_ta = form.querySelector('[data-field="mo_ta"]').value.trim()
         const so_tien = Number(soTienVal)
         if (!soTienVal || !Number.isFinite(so_tien) || so_tien < 0) {
             showToast('Vui lòng nhập số tiền hợp lệ', 'error'); return
+        }
+        if (!activeReceiptFile) {
+            showToast('Vui lòng chụp ảnh hóa đơn/bằng chứng', 'error'); return
+        }
+        const btnSave = form.querySelector('.btn')
+        btnSave.disabled = true
+        showToast('Đang lấy vị trí GPS...')
+        let loc
+        try {
+            loc = await getLocation()
+        } catch (e) {
+            showToast(e.message, 'error')
+            btnSave.disabled = false
+            return
         }
         let anh_url = null
         if (activeReceiptFile) {
             try {
                 showToast('Đang upload ảnh...')
                 anh_url = await uploadReceipt(activeReceiptFile, currentProfile.id)
-            } catch (e) { showToast('Lỗi upload ảnh: ' + e.message, 'error'); return }
+            } catch (e) {
+                showToast('Lỗi upload ảnh: ' + e.message, 'error')
+                btnSave.disabled = false
+                return
+            }
         }
         const { error } = await sb.from('chi_phi_chuyen').insert({
-            trip_id: currentTrip.id, loai, mo_ta: mo_ta || null, so_tien, anh_url
+            trip_id: currentTrip.id, loai, mo_ta: mo_ta || null, so_tien, anh_url,
+            lat: loc.lat, lng: loc.lng,
+            anh_realtime: activeReceiptIsRealtime,
+            is_legacy: false
         })
-        if (error) { showToast('Lỗi: ' + error.message, 'error'); return }
+        if (error) {
+            showToast('Lỗi: ' + error.message, 'error')
+            btnSave.disabled = false
+            return
+        }
         form.querySelector('[data-field="so_tien"]').value = ''
         form.querySelector('[data-field="mo_ta"]').value = ''
+        btnSave.disabled = false
         closeActiveForm()
         showToast('Đã thêm chi phí', 'success')
         await reloadTripChiPhi()
@@ -517,6 +640,12 @@
         soTienInput.value = exp.so_tien || ''
         soTienInput.setAttribute('data-field', 'so_tien')
         soTienGroup.append(soTienLabel, soTienInput)
+        const soTienHint = addMoneyHint(soTienInput)
+        if (exp.so_tien) {
+            soTienInput.dataset.rawValue = String(exp.so_tien)
+            soTienInput.value = Number(exp.so_tien).toLocaleString('vi-VN')
+            soTienHint.textContent = numberToVietnamese(Number(exp.so_tien))
+        }
 
         const moTaGroup = document.createElement('div')
         moTaGroup.className = 'form-group'
@@ -528,7 +657,16 @@
         moTaInput.setAttribute('data-field', 'mo_ta')
         moTaGroup.append(moTaLabel, moTaInput)
 
-        const uploadGroup = buildUploadGroup(() => { wrap.dataset.photoRemoved = 'true' })
+        const uploadGroup = buildUploadGroup(
+            () => {
+                wrap.dataset.photoRemoved = 'true'
+                activeReceiptIsRealtime = null
+            },
+            {
+                showGallery: false,
+                onPickRealtime: () => { activeReceiptIsRealtime = true }
+            }
+        )
         if (exp.anh_url) {
             const preview = uploadGroup.querySelector('.receipt-preview')
             const img = uploadGroup.querySelector('.receipt-preview-img')
@@ -554,7 +692,8 @@
     async function submitEditExpense(expenseId, currentAnhUrl) {
         const form = document.querySelector(`[data-form-id="edit-${expenseId}"]`)
         const loai = form.querySelector('[data-field="loai"]').value
-        const soTienVal = form.querySelector('[data-field="so_tien"]').value
+        const soTienEl = form.querySelector('[data-field="so_tien"]')
+        const soTienVal = soTienEl.dataset.rawValue || soTienEl.value
         const mo_ta = form.querySelector('[data-field="mo_ta"]').value.trim()
         const so_tien = Number(soTienVal)
         if (!soTienVal || !Number.isFinite(so_tien) || so_tien < 0) {
@@ -569,8 +708,14 @@
         } else if (form.dataset.photoRemoved === 'true') {
             anh_url = null
         }
+        const updatePayload = { loai, mo_ta: mo_ta || null, so_tien, anh_url }
+        if (activeReceiptFile) {
+            updatePayload.anh_realtime = true
+        } else if (form.dataset.photoRemoved === 'true') {
+            updatePayload.anh_realtime = null
+        }
         const { error } = await sb.from('chi_phi_chuyen')
-            .update({ loai, mo_ta: mo_ta || null, so_tien, anh_url })
+            .update(updatePayload)
             .eq('id', expenseId)
         if (error) { showToast('Lỗi: ' + error.message, 'error'); return }
         closeActiveForm()

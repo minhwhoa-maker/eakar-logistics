@@ -107,10 +107,8 @@
             <div class="form-group">
                 <label>Ảnh hóa đơn</label>
                 <input type="file" accept="image/*" capture="environment" class="upload-input" id="maint-camera-input" onchange="handleMaintFileSelect(this)">
-                <input type="file" accept="image/*" class="upload-input" id="maint-gallery-input" onchange="handleMaintFileSelect(this)">
                 <div class="upload-buttons">
                     <button type="button" class="btn-upload" onclick="document.getElementById('maint-camera-input').click()"><span class="upload-icon">📷</span> Chụp ảnh</button>
-                    <button type="button" class="btn-upload" onclick="document.getElementById('maint-gallery-input').click()"><span class="upload-icon">🖼️</span> Thư viện</button>
                 </div>
                 <div id="maint-receipt-preview" style="margin-top:12px;display:none">
                     <img id="maint-receipt-preview-img" src="" style="width:100%;max-height:200px;object-fit:cover;border-radius:var(--radius-sm);border:1.5px solid var(--border);display:block">
@@ -143,6 +141,8 @@
     let activeReceiptFile = null
     let maintReceiptFile = null
     let maintChiPhiInitialized = false
+    let activeReceiptIsRealtime = null
+    let maintReceiptIsRealtime = null
 
     const EXPENSE_TYPES = {
         xang:   '⛽ Xăng',
@@ -166,6 +166,7 @@
             const oldForm = document.querySelector(`[data-form-id="${activeFormId}"]`)
             if (oldForm) oldForm.style.display = 'none'
             activeReceiptFile = null
+            activeReceiptIsRealtime = null
             activeFormId = null
         }
         activeFormId = formId
@@ -178,6 +179,7 @@
             const form = document.querySelector(`[data-form-id="${activeFormId}"]`)
             if (form) form.style.display = 'none'
             activeReceiptFile = null
+            activeReceiptIsRealtime = null
             activeFormId = null
         }
     }
@@ -213,8 +215,7 @@
         reader.readAsDataURL(activeReceiptFile)
     }
 
-    // Builds a reusable upload group. onRemove() is called when user removes photo.
-    function buildUploadGroup(onRemove) {
+    function buildUploadGroup(onRemove, options = {}) {
         const group = document.createElement('div')
         group.className = 'form-group'
 
@@ -226,13 +227,30 @@
         cameraInput.accept = 'image/*'
         cameraInput.setAttribute('capture', 'environment')
         cameraInput.className = 'upload-input'
-        cameraInput.onchange = e => handleFileSelect(e.target)
+        cameraInput.onchange = e => {
+            handleFileSelect(e.target)
+            if (e.target.files[0] && options.onPickRealtime) options.onPickRealtime(e.target.files[0])
+        }
 
-        const galleryInput = document.createElement('input')
-        galleryInput.type = 'file'
-        galleryInput.accept = 'image/*'
-        galleryInput.className = 'upload-input'
-        galleryInput.onchange = e => handleFileSelect(e.target)
+        let galleryInput
+        let btnGal
+
+        if (options.showGallery) {
+            galleryInput = document.createElement('input')
+            galleryInput.type = 'file'
+            galleryInput.accept = 'image/*'
+            galleryInput.className = 'upload-input'
+            galleryInput.onchange = e => {
+                handleFileSelect(e.target)
+                if (e.target.files[0] && options.onPickGallery) options.onPickGallery(e.target.files[0])
+            }
+
+            btnGal = document.createElement('button')
+            btnGal.type = 'button'
+            btnGal.className = 'btn-upload'
+            btnGal.innerHTML = '<span class="upload-icon">🖼️</span> Thư viện'
+            btnGal.onclick = () => galleryInput.click()
+        }
 
         const uploadBtns = document.createElement('div')
         uploadBtns.className = 'upload-buttons'
@@ -243,13 +261,8 @@
         btnCam.innerHTML = '<span class="upload-icon">📷</span> Chụp ảnh'
         btnCam.onclick = () => cameraInput.click()
 
-        const btnGal = document.createElement('button')
-        btnGal.type = 'button'
-        btnGal.className = 'btn-upload'
-        btnGal.innerHTML = '<span class="upload-icon">🖼️</span> Thư viện'
-        btnGal.onclick = () => galleryInput.click()
-
-        uploadBtns.append(btnCam, btnGal)
+        uploadBtns.appendChild(btnCam)
+        if (btnGal) uploadBtns.appendChild(btnGal)
 
         const preview = document.createElement('div')
         preview.className = 'receipt-preview'
@@ -265,7 +278,7 @@
         removeSpan.textContent = '✕ Xóa ảnh'
         removeSpan.onclick = () => {
             cameraInput.value = ''
-            galleryInput.value = ''
+            if (galleryInput) galleryInput.value = ''
             activeReceiptFile = null
             previewImg.src = ''
             preview.style.display = 'none'
@@ -273,7 +286,10 @@
         }
 
         preview.append(previewImg, removeSpan)
-        group.append(label, cameraInput, galleryInput, uploadBtns, preview)
+        const childrenOfGroup = [label, cameraInput]
+        if (galleryInput) childrenOfGroup.push(galleryInput)
+        childrenOfGroup.push(uploadBtns, preview)
+        group.append(...childrenOfGroup)
         return group
     }
 
@@ -521,7 +537,13 @@
         moTaInput.setAttribute('data-field', 'mo_ta')
         moTaGroup.append(moTaLabel, moTaInput)
 
-        const uploadGroup = buildUploadGroup(null)
+        const uploadGroup = buildUploadGroup(
+            () => { activeReceiptIsRealtime = null },
+            {
+                showGallery: false,
+                onPickRealtime: () => { activeReceiptIsRealtime = true }
+            }
+        )
 
         const btnRow = document.createElement('div')
         btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px'
@@ -550,6 +572,10 @@
             showToast('Vui lòng nhập số tiền hợp lệ', 'error')
             return
         }
+        if (!activeReceiptFile) {
+            showToast('Vui lòng chụp ảnh hóa đơn/bằng chứng', 'error')
+            return
+        }
         const btnSave = form.querySelector('.btn')
         showToast('Đang lấy vị trí GPS...')
         btnSave.disabled = true
@@ -574,9 +600,15 @@
         }
         const { error } = await sb.from('chi_phi_chuyen').insert({
             trip_id: tripId, loai, mo_ta: mo_ta || null, so_tien, anh_url,
-            lat: loc.lat, lng: loc.lng
+            lat: loc.lat, lng: loc.lng,
+            anh_realtime: activeReceiptIsRealtime,
+            is_legacy: false
         })
-        if (error) { showToast('Lỗi: ' + error.message, 'error'); return }
+        if (error) {
+            showToast('Lỗi: ' + error.message, 'error')
+            btnSave.disabled = false
+            return
+        }
         form.querySelector('[data-field="so_tien"]').value = ''
         form.querySelector('[data-field="mo_ta"]').value = ''
         closeActiveForm()
@@ -702,7 +734,16 @@
         moTaInput.setAttribute('data-field', 'mo_ta')
         moTaGroup.append(moTaLabel, moTaInput)
 
-        const uploadGroup = buildUploadGroup(() => { wrap.dataset.photoRemoved = 'true' })
+        const uploadGroup = buildUploadGroup(
+            () => {
+                wrap.dataset.photoRemoved = 'true'
+                activeReceiptIsRealtime = null
+            },
+            {
+                showGallery: false,
+                onPickRealtime: () => { activeReceiptIsRealtime = true }
+            }
+        )
         if (exp.anh_url) {
             const preview = uploadGroup.querySelector('.receipt-preview')
             const img = uploadGroup.querySelector('.receipt-preview-img')
@@ -748,8 +789,14 @@
         } else if (form.dataset.photoRemoved === 'true') {
             anh_url = null
         }
+        const updatePayload = { loai, mo_ta: mo_ta || null, so_tien, anh_url }
+        if (activeReceiptFile) {
+            updatePayload.anh_realtime = true
+        } else if (form.dataset.photoRemoved === 'true') {
+            updatePayload.anh_realtime = null
+        }
         const { error } = await sb.from('chi_phi_chuyen')
-            .update({ loai, mo_ta: mo_ta || null, so_tien, anh_url })
+            .update(updatePayload)
             .eq('id', expenseId)
         if (error) { showToast('Lỗi: ' + error.message, 'error'); return }
         closeActiveForm()
@@ -945,6 +992,7 @@
     }
 
     function handleMaintFileSelect(input) {
+        maintReceiptIsRealtime = true
         maintReceiptFile = input.files[0]
         const reader = new FileReader()
         reader.onload = e => {
@@ -956,6 +1004,7 @@
 
     function clearMaintReceipt() {
         maintReceiptFile = null
+        maintReceiptIsRealtime = null
         document.querySelectorAll('#maintenance-modal .upload-input').forEach(i => i.value = '')
         document.getElementById('maint-receipt-preview').style.display = 'none'
         document.getElementById('maint-receipt-preview-img').src = ''
@@ -1004,6 +1053,10 @@
         if (!ngay) { showToast('Vui lòng chọn ngày', 'error'); return }
         if (!bo_phan) { showToast('Vui lòng nhập bộ phận', 'error'); return }
         if (!chiPhiVal || !Number.isFinite(chi_phi) || chi_phi < 0) { showToast('Vui lòng nhập chi phí hợp lệ', 'error'); return }
+        if (!maintReceiptFile) {
+            showToast('Vui lòng chụp ảnh bằng chứng', 'error')
+            return
+        }
         const btn = document.getElementById('btn-maint-submit')
         btn.disabled = true
         showToast('Đang lấy vị trí GPS...')
@@ -1032,7 +1085,8 @@
             lat: loc.lat, lng: loc.lng,
             nguoi_nhap: 'driver',
             tai_xe_id: currentProfileId,
-            trip_id
+            trip_id,
+            anh_realtime: maintReceiptIsRealtime
         })
         btn.disabled = false
         if (error) { showToast('Lỗi: ' + error.message, 'error'); return }
