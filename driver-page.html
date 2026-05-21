@@ -121,6 +121,29 @@
             </div>
         </div>
     </div>
+    <div id="confirm-diem-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">
+        <div style="background:var(--white);border-radius:var(--radius);padding:24px;width:500px;max-width:95%;max-height:90vh;overflow-y:auto">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <h3 id="confirm-diem-title" style="margin:0"></h3>
+                <button class="btn btn-gray" onclick="closeConfirmDiemModal()">Đóng</button>
+            </div>
+            <p id="confirm-diem-dia-chi" style="color:var(--text-muted);margin-bottom:16px"></p>
+            <div class="form-group">
+                <label>Ảnh tại điểm (bắt buộc)</label>
+                <input type="file" accept="image/*" capture="environment" id="confirm-diem-camera" class="upload-input" onchange="handleConfirmDiemPhoto(this)">
+                <div class="upload-buttons">
+                    <button type="button" class="btn-upload" onclick="document.getElementById('confirm-diem-camera').click()">📷 Chụp ảnh</button>
+                </div>
+                <div id="confirm-diem-preview" style="display:none;margin-top:12px">
+                    <img id="confirm-diem-preview-img" src="" style="width:100%;max-height:200px;object-fit:cover;border-radius:var(--radius-sm);border:1.5px solid var(--border)">
+                    <span class="preview-remove" onclick="clearConfirmDiemPhoto()">✕ Xóa ảnh</span>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:16px">
+                <button class="btn btn-success btn-full" id="btn-confirm-diem-submit" onclick="submitConfirmDiem()">✓ Xác nhận</button>
+            </div>
+        </div>
+    </div>
     <div class="toast" id="toast"></div>
     <script>
     function showToast(msg, type = '') {
@@ -143,6 +166,8 @@
     let maintChiPhiInitialized = false
     let activeReceiptIsRealtime = null
     let maintReceiptIsRealtime = null
+    let confirmDiemData = null
+    let confirmDiemPhoto = null
 
     const EXPENSE_TYPES = {
         xang:   '⛽ Xăng',
@@ -407,6 +432,7 @@
             .eq('owner_id', currentOwnerId)
             .eq('tai_xe_id', currentProfileId)
             .eq('trang_thai', 'dang_chay')
+            .in('trang_thai_giao', ['cho_nhan', 'dang_thuc_hien'])
             .order('ngay_bat_dau', { ascending: false })
         const container = document.getElementById('active-trips')
         container.textContent = ''
@@ -491,7 +517,11 @@
         const addExpForm = buildAddExpenseForm(trip.id)
         const completeForm = buildCompleteForm(trip.id, xeConfig)
 
-        card.append(title, startEl, chiPhiEl, btnBar, expenseList, addExpForm, completeForm)
+        const diemSection = document.createElement('div')
+        diemSection.id = 'diem-section-' + trip.id
+        buildDiemHanhTrinhSection(trip.id).then(el => diemSection.appendChild(el))
+
+        card.append(title, startEl, diemSection, chiPhiEl, btnBar, expenseList, addExpForm, completeForm)
         loadExpenses(trip.id)
         return card
     }
@@ -1240,6 +1270,163 @@
         })
     }
 
+    // ── Diem hanh trinh ───────────────────────────────────────────────
+    async function buildDiemHanhTrinhSection(tripId) {
+        const wrap = document.createElement('div')
+        wrap.style.cssText = 'margin:8px 0 12px;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden'
+
+        const { data: diems, error } = await sb
+            .from('diem_hanh_trinh')
+            .select('*')
+            .eq('trip_id', tripId)
+            .order('thu_tu', { ascending: true })
+
+        if (error || !diems || diems.length === 0) {
+            wrap.style.display = 'none'
+            return wrap
+        }
+
+        diems.forEach((diem, idx) => {
+            const row = document.createElement('div')
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 12px;' + (idx < diems.length - 1 ? 'border-bottom:1px solid var(--border)' : '')
+
+            const badge = document.createElement('span')
+            if (diem.loai === 'boc_hang') {
+                badge.textContent = '📦 Bốc'
+                badge.style.cssText = 'background:#e3f2fd;color:#1565c0;border-radius:4px;padding:2px 7px;font-size:0.82em;white-space:nowrap'
+            } else {
+                badge.textContent = '🚩 Giao'
+                badge.style.cssText = 'background:#fff3e0;color:#e67e22;border-radius:4px;padding:2px 7px;font-size:0.82em;white-space:nowrap'
+            }
+
+            const addr = document.createElement('span')
+            addr.style.cssText = 'flex:1;font-size:0.9em'
+            addr.textContent = diem.dia_chi || ''
+
+            row.append(badge, addr)
+
+            if (diem.trang_thai === 'hoan_thanh') {
+                const done = document.createElement('span')
+                done.textContent = '✅'
+                done.style.cssText = 'font-size:1.1em'
+                row.appendChild(done)
+                if (diem.anh_url) {
+                    const thumb = document.createElement('img')
+                    thumb.src = diem.anh_url
+                    thumb.style.cssText = 'width:36px;height:36px;object-fit:cover;border-radius:4px;border:1px solid var(--border);cursor:pointer'
+                    thumb.onclick = () => window.open(diem.anh_url, '_blank')
+                    row.appendChild(thumb)
+                }
+            } else {
+                const btnConfirm = document.createElement('button')
+                btnConfirm.className = 'btn btn-sm btn-success'
+                btnConfirm.textContent = '✓ Xác nhận tại điểm'
+                btnConfirm.style.whiteSpace = 'nowrap'
+                btnConfirm.onclick = () => openConfirmDiemModal(diem)
+                row.appendChild(btnConfirm)
+            }
+
+            wrap.appendChild(row)
+        })
+
+        return wrap
+    }
+
+    function openConfirmDiemModal(diem) {
+        confirmDiemData = diem
+        confirmDiemPhoto = null
+        document.getElementById('confirm-diem-title').textContent =
+            diem.loai === 'boc_hang' ? '📦 Xác nhận bốc hàng' : '🚩 Xác nhận giao hàng'
+        document.getElementById('confirm-diem-dia-chi').textContent = diem.dia_chi || ''
+        document.getElementById('confirm-diem-camera').value = ''
+        document.getElementById('confirm-diem-preview').style.display = 'none'
+        document.getElementById('confirm-diem-preview-img').src = ''
+        document.getElementById('confirm-diem-modal').style.display = 'flex'
+    }
+
+    function closeConfirmDiemModal() {
+        document.getElementById('confirm-diem-modal').style.display = 'none'
+        confirmDiemData = null
+        confirmDiemPhoto = null
+    }
+
+    function handleConfirmDiemPhoto(input) {
+        if (!input.files || !input.files[0]) return
+        confirmDiemPhoto = input.files[0]
+        const reader = new FileReader()
+        reader.onload = e => {
+            document.getElementById('confirm-diem-preview-img').src = e.target.result
+            document.getElementById('confirm-diem-preview').style.display = 'block'
+        }
+        reader.readAsDataURL(confirmDiemPhoto)
+    }
+
+    function clearConfirmDiemPhoto() {
+        confirmDiemPhoto = null
+        document.getElementById('confirm-diem-camera').value = ''
+        document.getElementById('confirm-diem-preview').style.display = 'none'
+        document.getElementById('confirm-diem-preview-img').src = ''
+    }
+
+    async function submitConfirmDiem() {
+        if (!confirmDiemPhoto) {
+            showToast('Vui lòng chụp ảnh tại điểm', 'error')
+            return
+        }
+        const btn = document.getElementById('btn-confirm-diem-submit')
+        btn.disabled = true
+
+        let loc
+        try {
+            showToast('Đang lấy vị trí GPS...')
+            loc = await getLocation()
+        } catch (e) {
+            showToast(e.message, 'error')
+            btn.disabled = false
+            return
+        }
+
+        let anh_url
+        try {
+            showToast('Đang upload ảnh...')
+            anh_url = await uploadReceipt(confirmDiemPhoto, currentProfileId)
+        } catch (e) {
+            showToast('Lỗi upload ảnh: ' + e.message, 'error')
+            btn.disabled = false
+            return
+        }
+
+        const { error: updateErr } = await sb.from('diem_hanh_trinh')
+            .update({ trang_thai: 'hoan_thanh', anh_url, anh_realtime: true, lat: loc.lat, lng: loc.lng })
+            .eq('id', confirmDiemData.id)
+        if (updateErr) {
+            showToast('Lỗi: ' + updateErr.message, 'error')
+            btn.disabled = false
+            return
+        }
+
+        const { data: pending } = await sb.from('diem_hanh_trinh')
+            .select('id')
+            .eq('trip_id', confirmDiemData.trip_id)
+            .eq('trang_thai', 'chua_thuc_hien')
+        if (pending && pending.length === 0) {
+            await sb.from('trips')
+                .update({ trang_thai_giao: 'dang_thuc_hien' })
+                .eq('id', confirmDiemData.trip_id)
+        }
+
+        const tripId = confirmDiemData.trip_id
+        closeConfirmDiemModal()
+        btn.disabled = false
+        showToast('Đã xác nhận điểm', 'success')
+
+        const diemSection = document.getElementById('diem-section-' + tripId)
+        if (diemSection) {
+            diemSection.textContent = ''
+            buildDiemHanhTrinhSection(tripId).then(el => diemSection.appendChild(el))
+        }
+    }
+
     // ── Auth ──────────────────────────────────────────────────────────
     async function logout() {
         await sb.auth.signOut()
@@ -1257,7 +1444,6 @@
         currentBienSo = formatBienSo(xe?.bien_so || '') || ''
         currentXeId = xe?.id || null
         if (xe) {
-            document.getElementById('btn-new-trip').style.display = ''
             document.getElementById('btn-bao-duong').style.display = ''
         } else {
             const warn = document.createElement('div')

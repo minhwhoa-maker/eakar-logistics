@@ -104,6 +104,20 @@
                 </table>
             </div>
         </div>
+        <div class="card">
+            <h3>💰 Bảng lương theo km</h3>
+            <div class="form-row">
+                <input type="text" id="km-loai-xe" placeholder="Loại xe (vd: Xe tải nhỏ)">
+                <input type="text" id="km-tu" placeholder="Km từ">
+                <input type="text" id="km-den" placeholder="Km đến (để trống = không giới hạn)">
+                <input type="text" id="km-so-tien" placeholder="Số tiền (VNĐ)">
+            </div>
+            <button class="btn" onclick="addKmRate()">+ Thêm bậc</button>
+            <div style="margin-top:16px">
+                <select id="km-filter-loai" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px;color:#1a1a2e;background:white;margin-bottom:8px"></select>
+                <div id="km-rate-list"></div>
+            </div>
+        </div>
     </div>
     <script>
         function showToast(msg, type = '') {
@@ -866,6 +880,121 @@
             p.style.display = p.style.display === 'none' ? 'block' : 'none'
         }
 
+        async function loadKmRates() {
+            const container = document.getElementById('km-rate-list')
+            const filterSelect = document.getElementById('km-filter-loai')
+            container.textContent = 'Đang tải...'
+
+            const { data, error } = await sb.from('bang_luong_km')
+                .select('*')
+                .eq('owner_id', ownerProfileId)
+                .order('loai_xe', { ascending: true })
+                .order('km_tu', { ascending: true })
+            if (error) {
+                container.textContent = 'Không thể tải bảng lương km'
+                showToast('Lỗi: ' + error.message, 'error')
+                return
+            }
+
+            const uniqueLoai = [...new Set((data || []).map(r => r.loai_xe))]
+            filterSelect.textContent = ''
+            const allOpt = document.createElement('option')
+            allOpt.value = ''
+            allOpt.textContent = 'Tất cả'
+            filterSelect.appendChild(allOpt)
+            uniqueLoai.forEach(loai => {
+                const opt = document.createElement('option')
+                opt.value = loai
+                opt.textContent = loai
+                filterSelect.appendChild(opt)
+            })
+
+            function renderKmTable(rows) {
+                container.textContent = ''
+                if (!rows || rows.length === 0) {
+                    const p = document.createElement('p')
+                    p.style.color = '#999'
+                    p.style.marginTop = '8px'
+                    p.textContent = 'Chưa có bậc lương nào'
+                    container.appendChild(p)
+                    return
+                }
+                const table = document.createElement('table')
+                table.style.marginTop = '8px'
+                const thead = document.createElement('thead')
+                const headRow = document.createElement('tr')
+                ;['Loại xe', 'Km từ', 'Km đến', 'Số tiền', ''].forEach(label => {
+                    const th = document.createElement('th')
+                    th.textContent = label
+                    headRow.appendChild(th)
+                })
+                thead.appendChild(headRow)
+                const tbody = document.createElement('tbody')
+                rows.forEach(r => {
+                    const row = document.createElement('tr')
+                    addCell(row, r.loai_xe)
+                    addCell(row, r.km_tu)
+                    addCell(row, r.km_den !== null && r.km_den !== undefined ? r.km_den : 'Không giới hạn')
+                    addCell(row, formatMoney(r.so_tien))
+                    const actionCell = document.createElement('td')
+                    const delBtn = createButton('Xóa', 'btn btn-danger', () => deleteKmRate(r.id))
+                    delBtn.style.padding = '4px 8px'
+                    delBtn.style.fontSize = '12px'
+                    actionCell.appendChild(delBtn)
+                    row.appendChild(actionCell)
+                    tbody.appendChild(row)
+                })
+                table.append(thead, tbody)
+                container.appendChild(table)
+            }
+
+            filterSelect.onchange = () => {
+                const val = filterSelect.value
+                renderKmTable(val ? (data || []).filter(r => r.loai_xe === val) : data)
+            }
+
+            renderKmTable(data)
+        }
+
+        async function addKmRate() {
+            const loai_xe = document.getElementById('km-loai-xe').value.trim()
+            const kmTuRaw = document.getElementById('km-tu').value.trim()
+            const kmDenRaw = document.getElementById('km-den').value.trim()
+            const soTienEl = document.getElementById('km-so-tien')
+            const soTienRaw = soTienEl.dataset.rawValue || soTienEl.value.replace(/\./g, '')
+
+            if (!loai_xe) { showToast('Vui lòng nhập loại xe!', 'error'); return }
+            const km_tu = Number(kmTuRaw)
+            if (kmTuRaw === '' || !Number.isFinite(km_tu) || km_tu < 0) {
+                showToast('Km từ phải là số >= 0!', 'error'); return
+            }
+            const km_den = kmDenRaw === '' ? null : Number(kmDenRaw)
+            if (km_den !== null && (!Number.isFinite(km_den) || km_den <= km_tu)) {
+                showToast('Km đến phải là số lớn hơn Km từ!', 'error'); return
+            }
+            const so_tien = Number(soTienRaw)
+            if (!soTienRaw || !Number.isFinite(so_tien) || so_tien <= 0) {
+                showToast('Số tiền phải lớn hơn 0!', 'error'); return
+            }
+
+            const { error } = await sb.from('bang_luong_km').insert({ owner_id: ownerProfileId, loai_xe, km_tu, km_den, so_tien })
+            if (error) { showToast('Lỗi: ' + error.message, 'error'); return }
+
+            document.getElementById('km-loai-xe').value = ''
+            document.getElementById('km-tu').value = ''
+            document.getElementById('km-den').value = ''
+            soTienEl.value = ''
+            soTienEl.dataset.rawValue = ''
+            loadKmRates()
+        }
+
+        async function deleteKmRate(id) {
+            if (!confirm('Xóa bậc lương này?')) return
+            const { error } = await sb.from('bang_luong_km').delete().eq('id', id)
+            if (error) showToast('Lỗi: ' + error.message, 'error')
+            else loadKmRates()
+        }
+
         async function init() {
             setVehicleMessage('Đang tải ...')
             const auth = await requireRole(sb, 'owner')
@@ -875,6 +1004,7 @@
             setupPushNotifications(ownerProfileId)
             await loadDrivers()
             await loadVehicles()
+            await loadKmRates()
             document.getElementById('new-bien-so').addEventListener('blur', () => {
                 const input = document.getElementById('new-bien-so')
                 const formatted = formatBienSo(input.value.trim())
@@ -882,6 +1012,7 @@
             })
             addDotFormat(document.getElementById('new-luong-co-ban'))
             addDotFormat(document.getElementById('new-gia-tri-luong'))
+            addDotFormat(document.getElementById('km-so-tien'))
             document.getElementById('new-cach-tinh-luong').addEventListener('change', () => {
                 const mode = document.getElementById('new-cach-tinh-luong').value
                 const el = document.getElementById('new-gia-tri-luong')
