@@ -3,30 +3,39 @@ export default async function handler(req, res) {
 
     const { origin, destination, waypoints = [] } = req.body
 
-    const encode = (s) => encodeURIComponent(s)
-    const toParam = (d) => d.lat && d.lng ? `${d.lat},${d.lng}` : d.dia_chi
+    const toWaypoint = (d) => d.lat && d.lng
+        ? { location: { latLng: { latitude: d.lat, longitude: d.lng } } }
+        : { address: d.dia_chi }
 
-    const originParam = encode(toParam(origin))
-    const destParam = encode(toParam(destination))
-
-    let url = `https://maps.googleapis.com/maps/api/directions/json?origin=${originParam}&destination=${destParam}&key=${process.env.GOOGLE_MAPS_API_KEY}`
+    const body = {
+        origin: toWaypoint(origin),
+        destination: toWaypoint(destination),
+        ...(waypoints.length > 0 && { optimizeWaypointOrder: true })
+    }
 
     if (waypoints.length > 0) {
-        const waypointStr = 'optimize:true|' + waypoints.map(w => toParam(w)).join('|')
-        url += `&waypoints=${encode(waypointStr)}`
+        body.intermediates = waypoints.map(toWaypoint)
     }
 
     try {
-        const response = await fetch(url)
+        const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Goog-Api-Key': process.env.GOOGLE_MAPS_API_KEY,
+                'X-Goog-FieldMask': 'routes.distanceMeters,routes.optimizedIntermediateWaypointIndex'
+            },
+            body: JSON.stringify(body)
+        })
         const data = await response.json()
 
-        if (data.status !== 'OK') {
-            return res.status(200).json({ error: data.status + ': ' + (data.error_message || 'Google Maps error') })
+        if (!data.routes || data.routes.length === 0) {
+            return res.status(200).json({ error: data.error?.message || 'No routes found' })
         }
 
         const route = data.routes[0]
-        const km = route.legs.reduce((sum, leg) => sum + leg.distance.value, 0) / 1000
-        const optimized_order = route.waypoint_order || []
+        const km = route.distanceMeters / 1000
+        const optimized_order = route.optimizedIntermediateWaypointIndex || []
 
         return res.status(200).json({ km, optimized_order })
     } catch (err) {
