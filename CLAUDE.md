@@ -131,7 +131,7 @@ function showToast(msg, type = '') {
 Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"type": "module"`.
 
 - **`api/chat.js`** — pure proxy SSE tới Anthropic API; model, system prompt và messages đều đến từ `req.body` (do `owner-dashboard.html` gửi), không có gì hardcode server-side. Env: `ANTHROPIC_API_KEY`.
-- **`api/maps.js`** — POST `{ origin, destination, waypoints? }` proxy tới Google Maps Directions API. `origin`/`destination`/waypoints đều là `{ dia_chi?, lat?, lng? }` — nếu có lat+lng dùng `"lat,lng"`, fallback `dia_chi`. Trả `{ km, optimized_order }` hoặc `{ error }`. Env: `GOOGLE_MAPS_API_KEY`.
+- **`api/maps.js`** — POST `{ origin, destination, waypoints? }` proxy tới VietMap APIs. `origin`/`destination`/waypoints đều là `{ dia_chi?, lat?, lng? }` — nếu đã có lat+lng thì dùng luôn (skip geocode), fallback geocode qua VietMap Search v3. Geocode origin trước (không có focus), rồi geocode tất cả điểm còn lại song song với origin làm focus. 0 waypoints → VietMap Route v1.1 (2 điểm); có waypoints → VietMap TSP v3 (`roundtrip=false&sources=first&destinations=last`). Trả `{ km, optimized_order }` hoặc `{ error }`. km làm tròn 1 chữ số thập phân (intentional cho `bang_luong_km` lookup). `optimized_order` luôn là original order (VietMap TSP không trả index array). Env: `VIETMAP_API_KEY`.
 - **`api/subscribe.js`** — POST `{ user_id, subscription }`, upsert vào `push_subscriptions`. Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
 - **`api/notify.js`** — POST `{ owner_id, type, payload }`. Check `notify_settings` bằng `.maybeSingle()` (NULL row = tất cả bật), gửi push qua `web-push`, tự xóa subscription nếu 410. Push payload JSON bao gồm `title`, `body`, `icon`, và `url` (dùng trong `sw.js` notificationclick). URL logic: nếu `payload.trip_id` có giá trị → `/trip-detail.html?trip_id={trip_id}`; ngược lại nếu `type === 'maintenance'` → `/vehicles.html`; còn lại → `/owner-dashboard.html`. `type` và payload fields bắt buộc:
   - `'new_trip'`: `{ driver_name, bien_so, tuyen_duong, trip_id }`
@@ -146,7 +146,7 @@ Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"typ
 | Variable | Dùng trong |
 |---|---|
 | `ANTHROPIC_API_KEY` | `api/chat.js` |
-| `GOOGLE_MAPS_API_KEY` | `api/maps.js` |
+| `VIETMAP_API_KEY` | `api/maps.js` |
 | `SUPABASE_URL` | `api/subscribe.js`, `api/notify.js` |
 | `SUPABASE_SERVICE_KEY` | `api/subscribe.js`, `api/notify.js` |
 | `VAPID_SUBJECT` | `api/notify.js` |
