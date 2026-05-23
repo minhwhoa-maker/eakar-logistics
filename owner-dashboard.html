@@ -471,6 +471,46 @@
                 }
             }
 
+            function addDotFormat(input) {
+                input.addEventListener('input', () => {
+                    const raw = input.value.replace(/\D/g, '')
+                    input.dataset.rawValue = raw
+                    input.value = raw ? raw.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : ''
+                })
+            }
+
+            function numberToVietnamese(n) {
+                if (n === 0) return 'không đồng'
+                const UNITS = ['', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín']
+                function readTens(t, u) {
+                    if (t === 1) return 'mười' + (u > 0 ? ' ' + (u === 5 ? 'lăm' : UNITS[u]) : '')
+                    return UNITS[t] + ' mươi' + (u > 0 ? ' ' + (u === 1 ? 'mốt' : u === 5 ? 'lăm' : UNITS[u]) : '')
+                }
+                function readThreeDigits(n) {
+                    if (n === 0) return ''
+                    const h = Math.floor(n / 100)
+                    const t = Math.floor((n % 100) / 10)
+                    const u = n % 10
+                    if (h > 0) {
+                        let r = UNITS[h] + ' trăm'
+                        if (t === 0 && u > 0) r += ' lẻ ' + UNITS[u]
+                        else if (t > 0) r += ' ' + readTens(t, u)
+                        return r
+                    }
+                    return t > 0 ? readTens(t, u) : UNITS[u]
+                }
+                const ty = Math.floor(n / 1_000_000_000)
+                const trieu = Math.floor((n % 1_000_000_000) / 1_000_000)
+                const nghin = Math.floor((n % 1_000_000) / 1_000)
+                const remainder = n % 1_000
+                const parts = []
+                if (ty > 0) parts.push(readThreeDigits(ty) + ' tỷ')
+                if (trieu > 0) parts.push(readThreeDigits(trieu) + ' triệu')
+                if (nghin > 0) parts.push(readThreeDigits(nghin) + ' nghìn')
+                if (remainder > 0) parts.push(readThreeDigits(remainder))
+                const result = parts.join(' ') + ' đ'; return result.charAt(0).toUpperCase() + result.slice(1)
+            }
+
             // ── New Trip Modal ─────────────────────────────────────
             let xeList = []
             let driverList = []
@@ -598,7 +638,12 @@
 
                 document.getElementById('nt-boc-list').textContent = ''
                 document.getElementById('nt-giao-list').textContent = ''
-                document.getElementById('nt-preview').style.display = 'none'
+                document.getElementById('nt-loai-luong').value = 'theo_km'
+                document.getElementById('nt-co-dinh-block').style.display = 'none'
+                const tienEl = document.getElementById('nt-tien-chuyen')
+                if (!tienEl._dafInit) { addDotFormat(tienEl); tienEl._dafInit = true }
+                tienEl.value = ''
+                tienEl.dataset.rawValue = ''
 
                 addDiemBoc()
                 addDiemGiao()
@@ -619,119 +664,6 @@
                 }))
             }
 
-            async function submitNewTrip() {
-                const xeId = document.getElementById('nt-xe').value
-                const driverId = document.getElementById('nt-driver').value
-                if (!xeId) { showToast('Vui lòng chọn xe!', 'error'); return }
-                if (!driverId) { showToast('Vui lòng chọn tài xế!', 'error'); return }
-
-                const bocDiems = collectDiems('nt-boc-list')
-                const giaoDiems = collectDiems('nt-giao-list')
-
-                if (bocDiems.length === 0) { showToast('Cần ít nhất 1 điểm bốc!', 'error'); return }
-                if (giaoDiems.length === 0) { showToast('Cần ít nhất 1 điểm giao!', 'error'); return }
-                if (bocDiems.some(d => !d.dia_chi)) { showToast('Vui lòng nhập địa chỉ cho tất cả điểm bốc!', 'error'); return }
-                if (giaoDiems.some(d => !d.dia_chi)) { showToast('Vui lòng nhập địa chỉ cho tất cả điểm giao!', 'error'); return }
-
-                const submitBtn = document.querySelector('#new-trip-modal .btn-success')
-                submitBtn.disabled = true
-                submitBtn.textContent = 'Đang xử lý...'
-
-                try {
-                    const giaoWaypoints = giaoDiems.slice(0, -1)
-                    const mapsRes = await fetch('/api/maps', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            origin: bocDiems[0],
-                            destination: giaoDiems[giaoDiems.length - 1],
-                            waypoints: giaoWaypoints
-                        })
-                    })
-                    const mapsData = await mapsRes.json()
-                    if (mapsData.error) { showToast('Lỗi Maps: ' + mapsData.error, 'error'); return }
-
-                    const km = mapsData.km
-                    const optimized_order = mapsData.optimized_order || []
-
-                    const xe = xeList.find(x => x.id === xeId)
-                    let luong_chuyen = 0
-                    if (xe) {
-                        const { data: rateRows } = await sb.from('bang_luong_km')
-                            .select('so_tien')
-                            .eq('owner_id', currentOwnerProfileId)
-                            .eq('loai_xe', xe.loai_xe || '')
-                            .lte('km_tu', km)
-                            .or('km_den.gte.' + km + ',km_den.is.null')
-                            .limit(1)
-                        if (rateRows && rateRows[0]) luong_chuyen = rateRows[0].so_tien
-                    }
-
-                    const driver = driverList.find(d => d.id === driverId)
-                    const tuyen_duong = bocDiems[0].dia_chi + ' → ' + giaoDiems[giaoDiems.length - 1].dia_chi
-
-                    const { data: tripData, error: tripError } = await sb.from('trips').insert({
-                        owner_id: currentOwnerProfileId,
-                        tai_xe_id: driverId,
-                        xe_id: xeId,
-                        km_ke_hoach: km,
-                        km_duyet: km,
-                        luong_chuyen,
-                        trang_thai: 'dang_chay',
-                        trang_thai_giao: 'cho_nhan',
-                        tuyen_duong,
-                        ngay_bat_dau: new Date().toISOString()
-                    }).select().single()
-                    if (tripError) { showToast('Lỗi tạo chuyến: ' + tripError.message, 'error'); return }
-
-                    const orderedGiao = optimized_order.length > 0
-                        ? [...optimized_order.map(i => giaoWaypoints[i]), giaoDiems[giaoDiems.length - 1]]
-                        : giaoDiems
-
-                    const allDiems = [
-                        ...bocDiems.map((d, i) => ({ ...d, loai: 'boc_hang', thu_tu: i + 1 })),
-                        ...orderedGiao.map((d, i) => ({ ...d, loai: 'giao_hang', thu_tu: bocDiems.length + i + 1 }))
-                    ]
-
-                    await sb.from('diem_hanh_trinh').insert(allDiems.map(d => ({
-                        trip_id: tripData.id,
-                        owner_id: currentOwnerProfileId,
-                        thu_tu: d.thu_tu,
-                        loai: d.loai,
-                        dia_chi: d.dia_chi,
-                        lat: d.lat || null,
-                        lng: d.lng || null,
-                        trang_thai: 'chua_thuc_hien'
-                    })))
-
-                    await fetch('/api/notify', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            owner_id: currentOwnerProfileId,
-                            type: 'new_trip',
-                            payload: {
-                                driver_name: driver?.full_name || '',
-                                bien_so: xe?.bien_so || '',
-                                tuyen_duong,
-                                trip_id: tripData.id
-                            }
-                        })
-                    })
-
-                    document.getElementById('nt-km-text').textContent = km.toFixed(1) + ' km'
-                    document.getElementById('nt-luong-text').textContent = formatMoney(luong_chuyen)
-                    document.getElementById('nt-preview').style.display = 'block'
-
-                    showToast('Tạo chuyến thành công', 'success')
-                    setTimeout(() => closeNewTripModal(), 1500)
-                    loadTrips()
-                } finally {
-                    submitBtn.disabled = false
-                    submitBtn.textContent = 'Tạo chuyến'
-                }
-            }
-
             async function previewTrip() {
                 const xeId = document.getElementById('nt-xe').value
                 const driverId = document.getElementById('nt-driver').value
@@ -746,17 +678,23 @@
                 if (bocDiems.some(d => !d.dia_chi)) { showToast('Vui lòng nhập địa chỉ cho tất cả điểm bốc!', 'error'); return }
                 if (giaoDiems.some(d => !d.dia_chi)) { showToast('Vui lòng nhập địa chỉ cho tất cả điểm giao!', 'error'); return }
 
+                const mode = document.getElementById('nt-loai-luong').value
+                let tien_co_dinh = 0
+                if (mode === 'co_dinh') {
+                    const rawVal = document.getElementById('nt-tien-chuyen').dataset.rawValue || document.getElementById('nt-tien-chuyen').value
+                    tien_co_dinh = parseInt(rawVal.replace(/\D/g, ''), 10) || 0
+                    if (tien_co_dinh <= 0) { showToast('Vui lòng nhập tiền chuyến > 0!', 'error'); return }
+                }
+
                 const xe = xeList.find(x => x.id === xeId)
                 const driver = driverList.find(d => d.id === driverId)
 
                 pendingTripData = {
-                    xeId,
-                    driverId,
-                    xe,
-                    driver,
-                    diem_boc: bocDiems,
-                    diem_giao: giaoDiems,
-                    optimized_order: []
+                    xeId, driverId, xe, driver,
+                    diem_boc: bocDiems, diem_giao: giaoDiems,
+                    optimized_order: [],
+                    mode,
+                    tien_co_dinh
                 }
 
                 document.getElementById('preview-xe-driver').innerHTML =
@@ -765,14 +703,23 @@
                 const allAddrs = [...bocDiems.map(d => d.dia_chi), ...giaoDiems.map(d => d.dia_chi)]
                 document.getElementById('preview-tuyen-duong').value = allAddrs.join(' → ')
 
-                document.getElementById('preview-km').textContent = '⏳ Đang tính km...'
-                document.getElementById('preview-km-input').value = ''
-                document.getElementById('preview-luong').style.display = 'none'
+                if (mode === 'co_dinh') {
+                    document.getElementById('preview-km-block').style.display = 'none'
+                    document.getElementById('preview-tien-co-dinh').textContent = '💰 Tiền chuyến: ' + formatMoney(tien_co_dinh)
+                    document.getElementById('preview-tien-co-dinh').style.display = 'block'
+                    document.getElementById('preview-luong').style.display = 'none'
+                } else {
+                    document.getElementById('preview-km-block').style.display = ''
+                    document.getElementById('preview-km').textContent = '⏳ Đang tính km...'
+                    document.getElementById('preview-km-input').value = ''
+                    document.getElementById('preview-luong').style.display = 'none'
+                    document.getElementById('preview-tien-co-dinh').style.display = 'none'
+                }
 
                 document.getElementById('new-trip-modal').style.display = 'none'
                 document.getElementById('preview-trip-modal').style.display = 'flex'
 
-                fetchKmPreview()
+                if (mode !== 'co_dinh') fetchKmPreview()
             }
 
             async function fetchKmPreview() {
@@ -831,16 +778,16 @@
                 const tuyen_duong = document.getElementById('preview-tuyen-duong').value.trim()
                 if (!tuyen_duong) { showToast('Vui lòng nhập tuyến đường!', 'error'); return }
 
-                const kmVal = parseFloat(document.getElementById('preview-km-input').value)
-                const km_ke_hoach = kmVal > 0 ? kmVal : null
+                const { xeId, driverId, xe, driver, diem_boc, diem_giao, optimized_order, mode, tien_co_dinh } = pendingTripData
 
-                const btn = document.getElementById('btn-confirm-create')
-                btn.disabled = true
+                let km_ke_hoach = null
+                let luong_chuyen = 0
 
-                try {
-                    const { xeId, driverId, xe, driver, diem_boc, diem_giao, optimized_order } = pendingTripData
-
-                    let luong_chuyen = 0
+                if (mode === 'co_dinh') {
+                    luong_chuyen = tien_co_dinh
+                } else {
+                    const kmVal = parseFloat(document.getElementById('preview-km-input').value)
+                    km_ke_hoach = kmVal > 0 ? kmVal : null
                     if (km_ke_hoach && xe) {
                         const { data: rateRows } = await sb.from('bang_luong_km')
                             .select('so_tien')
@@ -851,7 +798,12 @@
                             .limit(1)
                         if (rateRows && rateRows[0]) luong_chuyen = rateRows[0].so_tien
                     }
+                }
 
+                const btn = document.getElementById('btn-confirm-create')
+                btn.disabled = true
+
+                try {
                     const { data: tripData, error: tripError } = await sb.from('trips').insert({
                         owner_id: currentOwnerProfileId,
                         tai_xe_id: driverId,
@@ -972,9 +924,17 @@
                 <button class="btn btn-gray" style="margin-top:6px;font-size:13px;padding:6px 12px" onclick="addDiemGiao()">+ Điểm giao</button>
             </div>
 
-            <div id="nt-preview" style="display:none;background:var(--bg);border-radius:var(--radius-sm);padding:12px;margin-bottom:16px">
-                <p style="margin:0 0 4px">📍 Km kế hoạch: <strong id="nt-km-text">-</strong></p>
-                <p style="margin:0">💰 Lương dự kiến: <strong id="nt-luong-text">-</strong></p>
+            <div style="margin-bottom:12px">
+                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Cách tính lương</label>
+                <select id="nt-loai-luong" onchange="document.getElementById('nt-co-dinh-block').style.display=this.value==='co_dinh'?'block':'none'" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:#1a1a2e;background:white">
+                    <option value="theo_km">Theo km (bảng lương)</option>
+                    <option value="co_dinh">Cố định</option>
+                </select>
+            </div>
+
+            <div id="nt-co-dinh-block" style="display:none;margin-bottom:12px">
+                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Tiền chuyến cố định (đ)</label>
+                <input type="text" id="nt-tien-chuyen" placeholder="0" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:#1a1a2e;box-sizing:border-box">
             </div>
 
             <div style="display:flex;gap:10px;justify-content:flex-end">
@@ -990,21 +950,25 @@
 
             <div id="preview-xe-driver"></div>
 
-            <div id="preview-km">⏳ Đang tính km...</div>
+            <div id="preview-km-block">
+                <div id="preview-km">⏳ Đang tính km...</div>
+
+                <div class="form-group">
+                    <label>Km kế hoạch</label>
+                    <div style="display:flex;gap:8px;align-items:center">
+                        <input type="number" id="preview-km-input" min="0" step="0.1" style="width:120px" oninput="updateLuongPreview()">
+                        <span>km</span>
+                    </div>
+                </div>
+            </div>
 
             <div id="preview-luong" style="display:none"></div>
+
+            <div id="preview-tien-co-dinh" style="display:none"></div>
 
             <div class="form-group">
                 <label>Tuyến đường</label>
                 <input type="text" id="preview-tuyen-duong">
-            </div>
-
-            <div class="form-group">
-                <label>Km kế hoạch</label>
-                <div style="display:flex;gap:8px;align-items:center">
-                    <input type="number" id="preview-km-input" min="0" step="0.1" style="width:120px" oninput="updateLuongPreview()">
-                    <span>km</span>
-                </div>
             </div>
 
             <div style="display:flex;gap:10px;margin-top:16px">
