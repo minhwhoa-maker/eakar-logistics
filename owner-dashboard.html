@@ -604,6 +604,29 @@
             function addDiemBoc() { buildDiemRow('nt-boc-list') }
             function addDiemGiao() { buildDiemRow('nt-giao-list') }
 
+            function setTripTab(mode) {
+                document.getElementById('nt-loai-luong').value = mode
+                const btnCoDinh = document.getElementById('tab-co-dinh')
+                const btnTheoKm = document.getElementById('tab-theo-km')
+                if (mode === 'co_dinh') {
+                    btnCoDinh.style.background = 'var(--primary)'
+                    btnCoDinh.style.color = 'white'
+                    btnCoDinh.style.fontWeight = '600'
+                    btnTheoKm.style.background = 'var(--bg)'
+                    btnTheoKm.style.color = 'var(--text-muted)'
+                    btnTheoKm.style.fontWeight = '400'
+                    document.getElementById('nt-co-dinh-block').style.display = 'block'
+                } else {
+                    btnTheoKm.style.background = 'var(--primary)'
+                    btnTheoKm.style.color = 'white'
+                    btnTheoKm.style.fontWeight = '600'
+                    btnCoDinh.style.background = 'var(--bg)'
+                    btnCoDinh.style.color = 'var(--text-muted)'
+                    btnCoDinh.style.fontWeight = '400'
+                    document.getElementById('nt-co-dinh-block').style.display = 'none'
+                }
+            }
+
             async function openNewTripModal() {
                 const { data: xeData } = await sb.from('xe').select('id, bien_so, loai_xe, cach_tinh_luong, gia_tri_luong').eq('owner_id', currentOwnerProfileId).neq('trang_thai', 'tam_nghi')
                 xeList = xeData || []
@@ -638,8 +661,7 @@
 
                 document.getElementById('nt-boc-list').textContent = ''
                 document.getElementById('nt-giao-list').textContent = ''
-                document.getElementById('nt-loai-luong').value = 'theo_km'
-                document.getElementById('nt-co-dinh-block').style.display = 'none'
+                setTripTab('co_dinh')
                 const tienEl = document.getElementById('nt-tien-chuyen')
                 if (!tienEl._dafInit) { addDotFormat(tienEl); tienEl._dafInit = true }
                 tienEl.value = ''
@@ -924,13 +946,17 @@
                 <button class="btn btn-gray" style="margin-top:6px;font-size:13px;padding:6px 12px" onclick="addDiemGiao()">+ Điểm giao</button>
             </div>
 
-            <div style="margin-bottom:12px">
-                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Cách tính lương</label>
-                <select id="nt-loai-luong" onchange="document.getElementById('nt-co-dinh-block').style.display=this.value==='co_dinh'?'block':'none'" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:#1a1a2e;background:white">
-                    <option value="theo_km">Theo km (bảng lương)</option>
-                    <option value="co_dinh">Cố định</option>
-                </select>
+            <div style="display:flex;gap:0;margin-bottom:16px;border-radius:var(--radius-sm);overflow:hidden;border:1.5px solid var(--border)">
+                <button id="tab-co-dinh" type="button" onclick="setTripTab('co_dinh')"
+                    style="flex:1;padding:10px;font-size:14px;border:none;cursor:pointer;background:var(--primary);color:white;font-weight:600">
+                    📌 Tuyến cố định
+                </button>
+                <button id="tab-theo-km" type="button" onclick="setTripTab('theo_km')"
+                    style="flex:1;padding:10px;font-size:14px;border:none;cursor:pointer;background:var(--bg);color:var(--text-muted);font-weight:400">
+                    📐 Chuyến ngoài tính theo Km
+                </button>
             </div>
+            <input type="hidden" id="nt-loai-luong" value="co_dinh">
 
             <div id="nt-co-dinh-block" style="display:none;margin-bottom:12px">
                 <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Tiền chuyến cố định (đ)</label>
