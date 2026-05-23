@@ -474,6 +474,19 @@
             // ── New Trip Modal ─────────────────────────────────────
             let xeList = []
             let driverList = []
+            let pendingTripData = null
+
+            function parseMapsUrl(text) {
+                // Pattern 1: /@lat,lng,zoom
+                let m = text.match(/@([-\d.]+),([-\d.]+)/)
+                if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) }
+
+                // Pattern 2: ?query=lat,lng hoặc &query=lat,lng
+                m = text.match(/[?&]query=([-\d.]+),([-\d.]+)/)
+                if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) }
+
+                return null
+            }
 
             function buildDiemRow(containerId) {
                 const container = document.getElementById(containerId)
@@ -485,6 +498,23 @@
                 addrInput.className = 'diem-dia-chi'
                 addrInput.placeholder = 'Địa chỉ'
                 addrInput.style.cssText = 'flex:1;min-width:140px;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px'
+
+                addrInput.addEventListener('input', () => {
+                    const val = addrInput.value.trim()
+                    const parsed = parseMapsUrl(val)
+                    if (parsed) {
+                        latInput.value = parsed.lat
+                        lngInput.value = parsed.lng
+                        coordSpan.textContent = parsed.lat.toFixed(5) + ', ' + parsed.lng.toFixed(5)
+                        addrInput.value = parsed.lat.toFixed(5) + ', ' + parsed.lng.toFixed(5)
+                        addrInput.style.color = 'var(--success)'
+                    } else {
+                        latInput.value = ''
+                        lngInput.value = ''
+                        coordSpan.textContent = ''
+                        addrInput.style.color = ''
+                    }
+                })
 
                 const latInput = document.createElement('input')
                 latInput.type = 'hidden'
@@ -701,6 +731,191 @@
                     submitBtn.textContent = 'Tạo chuyến'
                 }
             }
+
+            async function previewTrip() {
+                const xeId = document.getElementById('nt-xe').value
+                const driverId = document.getElementById('nt-driver').value
+                if (!xeId) { showToast('Vui lòng chọn xe!', 'error'); return }
+                if (!driverId) { showToast('Vui lòng chọn tài xế!', 'error'); return }
+
+                const bocDiems = collectDiems('nt-boc-list')
+                const giaoDiems = collectDiems('nt-giao-list')
+
+                if (bocDiems.length === 0) { showToast('Cần ít nhất 1 điểm bốc!', 'error'); return }
+                if (giaoDiems.length === 0) { showToast('Cần ít nhất 1 điểm giao!', 'error'); return }
+                if (bocDiems.some(d => !d.dia_chi)) { showToast('Vui lòng nhập địa chỉ cho tất cả điểm bốc!', 'error'); return }
+                if (giaoDiems.some(d => !d.dia_chi)) { showToast('Vui lòng nhập địa chỉ cho tất cả điểm giao!', 'error'); return }
+
+                const xe = xeList.find(x => x.id === xeId)
+                const driver = driverList.find(d => d.id === driverId)
+
+                pendingTripData = {
+                    xeId,
+                    driverId,
+                    xe,
+                    driver,
+                    diem_boc: bocDiems,
+                    diem_giao: giaoDiems,
+                    optimized_order: []
+                }
+
+                document.getElementById('preview-xe-driver').innerHTML =
+                    `<p style="margin:0 0 6px">🚛 <strong>${xe?.bien_so || ''}</strong> — ${driver?.full_name || ''}</p>`
+
+                const allAddrs = [...bocDiems.map(d => d.dia_chi), ...giaoDiems.map(d => d.dia_chi)]
+                document.getElementById('preview-tuyen-duong').value = allAddrs.join(' → ')
+
+                document.getElementById('preview-km').textContent = '⏳ Đang tính km...'
+                document.getElementById('preview-km-input').value = ''
+                document.getElementById('preview-luong').style.display = 'none'
+
+                document.getElementById('new-trip-modal').style.display = 'none'
+                document.getElementById('preview-trip-modal').style.display = 'flex'
+
+                fetchKmPreview()
+            }
+
+            async function fetchKmPreview() {
+                const { diem_boc, diem_giao } = pendingTripData
+                const giaoWaypoints = diem_giao.slice(0, -1)
+                try {
+                    const res = await fetch('/api/maps', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            origin: diem_boc[0],
+                            destination: diem_giao[diem_giao.length - 1],
+                            waypoints: giaoWaypoints
+                        })
+                    })
+                    const data = await res.json()
+                    if (data.error) {
+                        document.getElementById('preview-km').textContent = '⚠️ Không tính được km — nhập tay bên dưới'
+                        return
+                    }
+                    if (!pendingTripData) return
+                    pendingTripData.optimized_order = data.optimized_order || []
+                    document.getElementById('preview-km').textContent = '🗺️ ' + data.km.toFixed(1) + ' km (VietMap)'
+                    document.getElementById('preview-km-input').value = data.km
+                    updateLuongPreview()
+                } catch (err) {
+                    document.getElementById('preview-km').textContent = '⚠️ Không tính được km — nhập tay bên dưới'
+                }
+            }
+
+            async function updateLuongPreview() {
+                const km = parseFloat(document.getElementById('preview-km-input').value)
+                if (!km || km <= 0) {
+                    document.getElementById('preview-luong').style.display = 'none'
+                    return
+                }
+                const xe = pendingTripData?.xe
+                if (!xe) return
+                const { data: rateRows } = await sb.from('bang_luong_km')
+                    .select('so_tien')
+                    .eq('owner_id', currentOwnerProfileId)
+                    .eq('loai_xe', xe.loai_xe || '')
+                    .lte('km_tu', km)
+                    .or('km_den.gte.' + km + ',km_den.is.null')
+                    .limit(1)
+                const luongEl = document.getElementById('preview-luong')
+                if (rateRows && rateRows[0]) {
+                    luongEl.textContent = '💰 Lương dự kiến: ' + formatMoney(rateRows[0].so_tien)
+                    luongEl.style.display = 'block'
+                } else {
+                    luongEl.style.display = 'none'
+                }
+            }
+
+            async function confirmCreateTrip() {
+                const tuyen_duong = document.getElementById('preview-tuyen-duong').value.trim()
+                if (!tuyen_duong) { showToast('Vui lòng nhập tuyến đường!', 'error'); return }
+
+                const kmVal = parseFloat(document.getElementById('preview-km-input').value)
+                const km_ke_hoach = kmVal > 0 ? kmVal : null
+
+                const btn = document.getElementById('btn-confirm-create')
+                btn.disabled = true
+
+                try {
+                    const { xeId, driverId, xe, driver, diem_boc, diem_giao, optimized_order } = pendingTripData
+
+                    let luong_chuyen = 0
+                    if (km_ke_hoach && xe) {
+                        const { data: rateRows } = await sb.from('bang_luong_km')
+                            .select('so_tien')
+                            .eq('owner_id', currentOwnerProfileId)
+                            .eq('loai_xe', xe.loai_xe || '')
+                            .lte('km_tu', km_ke_hoach)
+                            .or('km_den.gte.' + km_ke_hoach + ',km_den.is.null')
+                            .limit(1)
+                        if (rateRows && rateRows[0]) luong_chuyen = rateRows[0].so_tien
+                    }
+
+                    const { data: tripData, error: tripError } = await sb.from('trips').insert({
+                        owner_id: currentOwnerProfileId,
+                        tai_xe_id: driverId,
+                        xe_id: xeId,
+                        km_ke_hoach,
+                        luong_chuyen,
+                        trang_thai: 'dang_chay',
+                        trang_thai_giao: 'cho_nhan',
+                        tuyen_duong,
+                        ngay_bat_dau: new Date().toISOString()
+                    }).select().single()
+                    if (tripError) { showToast('Lỗi tạo chuyến: ' + tripError.message, 'error'); btn.disabled = false; return }
+
+                    const giaoWaypoints = diem_giao.slice(0, -1)
+                    const orderedGiao = optimized_order.length > 0
+                        ? [...optimized_order.map(i => giaoWaypoints[i]), diem_giao[diem_giao.length - 1]]
+                        : diem_giao
+
+                    const allDiems = [
+                        ...diem_boc.map((d, i) => ({ ...d, loai: 'boc_hang', thu_tu: i + 1 })),
+                        ...orderedGiao.map((d, i) => ({ ...d, loai: 'giao_hang', thu_tu: diem_boc.length + i + 1 }))
+                    ]
+
+                    await sb.from('diem_hanh_trinh').insert(allDiems.map(d => ({
+                        trip_id: tripData.id,
+                        owner_id: currentOwnerProfileId,
+                        thu_tu: d.thu_tu,
+                        loai: d.loai,
+                        dia_chi: d.dia_chi,
+                        lat: d.lat || null,
+                        lng: d.lng || null,
+                        trang_thai: 'chua_thuc_hien'
+                    })))
+
+                    await fetch('/api/notify', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            owner_id: currentOwnerProfileId,
+                            type: 'new_trip',
+                            payload: {
+                                driver_name: driver?.full_name || '',
+                                bien_so: xe?.bien_so || '',
+                                tuyen_duong,
+                                trip_id: tripData.id
+                            }
+                        })
+                    })
+
+                    showToast('Tạo chuyến thành công', 'success')
+                    document.getElementById('preview-trip-modal').style.display = 'none'
+                    pendingTripData = null
+                    loadTrips()
+                } catch (err) {
+                    showToast('Lỗi: ' + err.message, 'error')
+                    btn.disabled = false
+                }
+            }
+
+            function closePreviewModal() {
+                document.getElementById('preview-trip-modal').style.display = 'none'
+                document.getElementById('new-trip-modal').style.display = 'flex'
+                pendingTripData = null
+            }
         </script>
     <div class="toast" id="toast"></div>
 
@@ -764,7 +979,37 @@
 
             <div style="display:flex;gap:10px;justify-content:flex-end">
                 <button class="btn btn-gray" onclick="closeNewTripModal()">Hủy</button>
-                <button class="btn btn-success" onclick="submitNewTrip()">Tạo chuyến</button>
+                <button class="btn btn-success" onclick="previewTrip()">Tạo chuyến</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="preview-trip-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+        <div style="background:var(--white);border-radius:var(--radius);padding:24px;width:640px;max-width:95%;max-height:90vh;overflow-y:auto;">
+            <h3>Xác nhận tạo chuyến</h3>
+
+            <div id="preview-xe-driver"></div>
+
+            <div id="preview-km">⏳ Đang tính km...</div>
+
+            <div id="preview-luong" style="display:none"></div>
+
+            <div class="form-group">
+                <label>Tuyến đường</label>
+                <input type="text" id="preview-tuyen-duong">
+            </div>
+
+            <div class="form-group">
+                <label>Km kế hoạch</label>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <input type="number" id="preview-km-input" min="0" step="0.1" style="width:120px" oninput="updateLuongPreview()">
+                    <span>km</span>
+                </div>
+            </div>
+
+            <div style="display:flex;gap:10px;margin-top:16px">
+                <button class="btn btn-gray" onclick="closePreviewModal()">← Sửa lại</button>
+                <button class="btn" id="btn-confirm-create" onclick="confirmCreateTrip()">✅ Xác nhận tạo</button>
             </div>
         </div>
     </div>
