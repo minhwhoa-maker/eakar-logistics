@@ -64,7 +64,7 @@
             <h3>Thêm xe mới</h3>
             <div class="form-row">
                 <input type="text" id="new-bien-so" placeholder="Biển số">
-                <input type="text" id="new-loai" placeholder="Loại xe">
+                <select id="new-loai"></select>
                 <input type="text" id="new-luong-co-ban" placeholder="Lương cơ bản (VNĐ/tháng)">
                 <select id="new-tai-xe">
                     <option value="">-- Chọn tài xế --</option>
@@ -107,7 +107,7 @@
         <div class="card">
             <h3>💰 Bảng lương theo km</h3>
             <div class="form-row">
-                <input type="text" id="km-loai-xe" placeholder="Loại xe (vd: Xe tải nhỏ)">
+                <select id="km-loai-xe"></select>
                 <input type="text" id="km-tu" placeholder="Km từ">
                 <input type="text" id="km-den" placeholder="Km đến (để trống = không giới hạn)">
                 <input type="text" id="km-so-tien" placeholder="Số tiền (VNĐ)">
@@ -214,6 +214,30 @@
             ['lop_xe', 'Lốp xe'],
             ['dinh_ky', 'Định kỳ']
         ]
+
+        const LOAI_XE_OPTIONS = [
+            { value: 'xe_nhe',   label: 'Xe nhẹ (<3.5T)' },
+            { value: 'xe_trung', label: 'Xe trung (3.5–10T)' },
+            { value: '3_chan',   label: '3 chân (~15T)' },
+            { value: '4_chan',   label: '4 chân (15–18T)' },
+            { value: '5_chan',   label: '5 chân (20–22T)' },
+            { value: 'dau_keo',  label: 'Đầu kéo' },
+        ]
+
+        function populateLoaiXeSelect(id) {
+            const sel = document.getElementById(id)
+            sel.textContent = ''
+            const placeholder = document.createElement('option')
+            placeholder.value = ''
+            placeholder.textContent = '-- Chọn loại xe --'
+            sel.appendChild(placeholder)
+            LOAI_XE_OPTIONS.forEach(o => {
+                const opt = document.createElement('option')
+                opt.value = o.value
+                opt.textContent = o.label
+                sel.appendChild(opt)
+            })
+        }
 
         function addCell(row, text) {
             const cell = document.createElement('td')
@@ -419,7 +443,7 @@
                     }
                     row.appendChild(plateCell)
 
-                    addCell(row, v.loai_xe || '-')
+                    addCell(row, LOAI_XE_OPTIONS.find(o => o.value === v.loai_xe)?.label ?? v.loai_xe ?? '-')
                     addCell(row, formatMoney(v.luong_co_ban || 0))
 
                     // Cách tính lương
@@ -896,16 +920,15 @@
                 return
             }
 
-            const uniqueLoai = [...new Set((data || []).map(r => r.loai_xe))]
             filterSelect.textContent = ''
             const allOpt = document.createElement('option')
             allOpt.value = ''
             allOpt.textContent = 'Tất cả'
             filterSelect.appendChild(allOpt)
-            uniqueLoai.forEach(loai => {
+            LOAI_XE_OPTIONS.forEach(o => {
                 const opt = document.createElement('option')
-                opt.value = loai
-                opt.textContent = loai
+                opt.value = o.value
+                opt.textContent = o.label
                 filterSelect.appendChild(opt)
             })
 
@@ -963,7 +986,7 @@
             const soTienEl = document.getElementById('km-so-tien')
             const soTienRaw = soTienEl.dataset.rawValue || soTienEl.value.replace(/\./g, '')
 
-            if (!loai_xe) { showToast('Vui lòng nhập loại xe!', 'error'); return }
+            if (!loai_xe) { showToast('Vui lòng chọn loại xe!', 'error'); return }
             const km_tu = Number(kmTuRaw)
             if (kmTuRaw === '' || !Number.isFinite(km_tu) || km_tu < 0) {
                 showToast('Km từ phải là số >= 0!', 'error'); return
@@ -1000,6 +1023,8 @@
             const auth = await requireRole(sb, 'owner')
             if (!auth) return
             ownerProfileId = auth.profile.id
+            populateLoaiXeSelect('new-loai')
+            populateLoaiXeSelect('km-loai-xe')
             loadNotifySettings()
             setupPushNotifications(ownerProfileId)
             await loadDrivers()
