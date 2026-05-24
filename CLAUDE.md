@@ -27,17 +27,174 @@ Không có build step, không có test runner, không có lint. Quy trình:
 ## Architecture
 
 ### Page roles
-- `bai10.html` — landing page + Google OAuth + role redirect. Có `<style>` block riêng (~220 dòng) cho hero/stats/features layout (KHÔNG dùng `.card` chuẩn).
-- `owner-dashboard.html` — owner xem báo cáo trips, filter tháng, realtime subscribe `trips`. Header có nav đến driver/vehicles. Bảng trips có cột "Chi tiết" link đến `trip-detail.html`. Có floating AI chatbot (nút FAB góc phải) gọi qua `/api/chat`; `driverMap` trong chatbot context được filter bằng `.eq('owner_id', currentOwnerProfileId)` để chỉ lấy drivers của owner đang đăng nhập. Bảng trips: row highlight bằng click + touchend (xóa highlight cũ trên `#report-body tr` trước, set background `#e3f2fd` cho row vừa tap/click). **Bảng trips có 7 cột**: Ngày | Tuyến đường | Trạng thái | Doanh thu | Chi phí | Lợi nhuận | Chi tiết. Cột "Trạng thái" (cột 3) được tạo thủ công trong `renderTrips()` bằng `row.insertBefore(statusCell, row.children[2])` — badge `🚛 Đang chạy` (màu `--primary`) hoặc `✅ Hoàn thành` (màu `--success`); không nằm trong values array. Mobile ≤600px: ẩn cột 5 (Chi phí) và cột 7 (Lương) bằng `nth-child(5)` và `nth-child(7)` trong `<style>` block ở `<head>` (cả tbody và thead selectors). **Notify panel**: tất cả 4 trang owner (`owner-dashboard`, `driver`, `vehicles`, `luong-thang`) đều có nút 🔔 `#btn-notify` ở header mở `#notify-panel` (fixed, top:64px right:16px, click-outside để đóng) với 4 toggle switch (notify_new_trip / notify_complete / notify_expense / notify_maintenance), load/save qua `notify_settings` table. `setupPushNotifications(userId)` chạy mỗi lần login. JS dependencies (`VAPID_PUBLIC_KEY`, `urlBase64ToUint8Array`, `setupPushNotifications`, `loadNotifySettings`, `saveNotifySetting`, `toggleNotifyPanel`) định nghĩa **local trong mỗi file** (không phải `shared.js`); dùng `ownerProfileId` (trừ owner-dashboard dùng `currentOwnerProfileId`). **Tạo chuyến**: nút "➕ Tạo chuyến" mở `#new-trip-modal`. **2 mode** chọn bằng tab buttons (`tab-co-dinh`/`tab-theo-km`) + hidden input `#nt-loai-luong`; `setTripTab(mode)` toggle UI. `#nt-tuyen-duong` luôn hiện — nhập tên tuyến cho `co_dinh`; bị bỏ qua ở `theo_km` (tuyến tự ghép từ địa chỉ). `#nt-co-dinh-block` (ẩn khi `theo_km`) chứa `#nt-tien-chuyen` dùng `addDotFormat`. 2 local helpers `addDotFormat` + `numberToVietnamese` định nghĩa trong file (không `shared.js`). Assign xe + driver. Mode `theo_km`: gọi `POST /api/maps` (origin=điểm bốc đầu, destination=điểm giao cuối, waypoints=giao slice trừ điểm cuối) để tính `km_ke_hoach` + `optimized_order`, lookup `bang_luong_km` → `luong_chuyen`. Mode `co_dinh`: `luong_chuyen = tien_co_dinh`, không gọi Maps API. INSERT `trips` (trang_thai=`'dang_chay'`, trang_thai_giao=`'cho_nhan'`) + bulk INSERT `diem_hanh_trinh`, push notify driver. Module-level vars: `xeList`, `driverList`. `buildDiemRow(containerId)` tạo row với input địa chỉ, hidden lat/lng, nút GPS, nút xóa; có `input` listener gọi `parseMapsUrl()` — nếu detect Google Maps URL (pattern `/@lat,lng` hoặc `?query=lat,lng`) thì auto-fill lat/lng + replace addrInput.value thành `"lat, lng"` + tô xanh; xóa/gõ text thường thì clear lat/lng. `collectDiems(containerId)` trả `[{dia_chi, lat, lng}]`. Bang_luong_km query: `.eq('loai_xe', xe.loai_xe).lte('km_tu', km).or('km_den.gte.'+km+',km_den.is.null').limit(1)` — dùng `.limit(1)` (KHÔNG `.maybeSingle()`) rồi access `rateRows[0]`. Waypoints cho Maps API: chỉ giao points (không trộn bốc), giao points slice `[0, -1]` = `giaoWaypoints`; `optimized_order` index vào `giaoWaypoints`; reorder: `[...optimized_order.map(i => giaoWaypoints[i]), giaoDiems[last]]`. Loại điểm insert vào `diem_hanh_trinh`: `'boc_hang'` / `'giao_hang'`. **Preview flow**: nút "Tạo chuyến" trong `#new-trip-modal` gọi `previewTrip()` (không phải `submitNewTrip()` — hàm cũ vẫn còn trong file nhưng không được gọi). `previewTrip()` validate + build `pendingTripData = { xeId, driverId, xe, driver, diem_boc, diem_giao, optimized_order:[], mode, tien_co_dinh }` → đóng `#new-trip-modal` → mở `#preview-trip-modal` → gọi `fetchKmPreview()` (fire-and-forget, chỉ khi `mode='theo_km'`). `fetchKmPreview()` gọi `/api/maps` async, sau khi resolve guard `if (!pendingTripData) return` (race: user có thể click "← Sửa lại" khi đang chờ), lưu `pendingTripData.optimized_order`, update `#preview-km` + `#preview-km-input` (cả 2 bên trong `#preview-km-block`). Preview modal: `#preview-km-block` + `#preview-luong` ẩn khi `co_dinh`; `#preview-tien-co-dinh` ẩn khi `theo_km`. `updateLuongPreview()` đọc `#preview-km-input` → query `bang_luong_km` → hiện `#preview-luong`; được gọi từ `fetchKmPreview()` và từ `oninput` trên `#preview-km-input`. `confirmCreateTrip()`: `co_dinh` → `luong_chuyen = tien_co_dinh` (skip km lookup); `theo_km` → đọc `#preview-km-input`, query lại `bang_luong_km` (không dùng cached value) → `luong_chuyen`; INSERT `trips` + `diem_hanh_trinh` + notify. `closePreviewModal()` đóng preview + mở lại `#new-trip-modal` + reset `pendingTripData = null`. Cả 2 modals dùng inline styles (không có `.modal`/`.modal-content` CSS class).
-- `trip-detail.html` — trang shared cho cả driver và owner xem chi tiết 1 chuyến. URL param: `?trip_id=`. `currentProfile` là module-level var (set trong `initPage()`). Auth dùng `getSession() + getUserProfile()` (không dùng `requireRole`). Driver chỉ xem được trip của mình; owner xem được tất cả. `ownerId` cho driver: query `users.select('owner_id').eq('id', currentProfile.id)` — dùng FK `owner_id` của driver, không query theo role. Trips query dùng join: `.select('*, tai_xe:users!tai_xe_id(full_name), xe:xe(bien_so)')`. `renderTripInfo()` hiển thị thêm 2 row: Tài xế (`trip.tai_xe.full_name`) và Biển số (`formatBienSo(trip.xe.bien_so)`). `goBack()` ưu tiên `document.referrer`, fallback theo `currentProfile.role` (driver → driver-page, owner → owner-dashboard, else → bai10). Driver + dang_chay: có thể thêm/sửa/xóa chi phí inline. Hiển thị GPS links nếu có tọa độ. Ảnh hóa đơn trong bảng chi phí dùng `openImageModal(url)` (fullscreen overlay, click ngoài hoặc ✕ để đóng) — không mở tab mới. EXPENSE_TYPES hiện tại: `{ xang, bai_xe, khac }` (đồng bộ với driver-page.html, `sua_xe` đã bỏ). Có 2 local helpers `numberToVietnamese` và `addMoneyHint` (copy từ driver-page.html). Khi driver thêm/sửa chi phí: ảnh bắt buộc + camera-only + GPS bắt buộc + moneyHint live, tương tự driver-page.html. Bảng chi phí hiển thị badge `⚠️ Cũ` cho entries `is_legacy=true`; nút ảnh hiển thị `📷⚠️` với tooltip cảnh báo nếu `anh_realtime === false`. Cột số tiền prefix icon nguồn: `👤` (driver_paid) / `🏢` (owner_paid) / trống (legacy). Add/edit form chi phí có thêm select nguon_tien (bắt buộc chọn, placeholder → validation fail).
-- `driver-page.html` — driver **không còn tự tạo chuyến** (owner tạo và assign). 2 tab ("Đang chạy" / "Hoàn thành"). Tab "Đang chạy" query `.eq('trang_thai', 'dang_chay').in('trang_thai_giao', ['cho_nhan', 'dang_thuc_hien'])` — chỉ hiện chuyến owner tạo + assign cho driver. `#btn-new-trip` và form tạo chuyến tồn tại trong HTML nhưng **luôn `display:none`** — `initPage()` không bao giờ show nó. Có nút "🔧 Báo bảo dưỡng" (`#btn-bao-duong`, `btn-warning`) trong filter-bar, chỉ hiện khi xe assigned, gọi `openMaintenanceModal()` → INSERT vào `bao_duong` với GPS bắt buộc + `notifyOwner('maintenance', ...)`. Module-level vars: `currentProfileId`, `currentDriverName`, `currentOwnerId` (từ `users.owner_id` của driver row), `currentBienSo` (từ `xe` table), `currentXeId` (từ `xe.id`), `confirmDiemData`, `confirmDiemPhoto`. `initPage()` kiểm tra xe assigned: query `xe.select('id, bien_so')`, set cả `currentBienSo` và `currentXeId`; nếu không có xe → hiện warning card đỏ trước `#active-trips` + ẩn `#btn-bao-duong`; nếu có xe → hiện `#btn-bao-duong`. Tab "Hoàn thành" link đến `trip-detail.html?trip_id=`. EXPENSE_TYPES hiện tại: `{ xang, bai_xe, khac }` — **`sua_xe` đã bỏ** (sửa chữa báo qua `bao_duong`). Có 2 local helpers: `numberToVietnamese(n)` (đọc số tiền thành chữ VN, e.g. "Một trăm ba mươi lăm nghìn đ" — capitalize first letter) và `addMoneyHint(input)` (auto-format input thành dấu chấm nghìn, lưu raw digits vào `input.dataset.rawValue`, hiển thị hint chữ bên dưới). Các submit function đọc `dataset.rawValue || .value` để lấy số thực. Khi thêm chi phí: ảnh bắt buộc, chỉ chụp camera (không có nút thư viện), tự động set `anh_realtime=true` + `is_legacy=false`. Khi sửa: nếu đổi ảnh thì cũng phải chụp mới (camera-only), `anh_realtime=true`; nếu xóa ảnh thì `anh_realtime=null`; nếu giữ nguyên ảnh thì `anh_realtime` giữ giá trị cũ trong DB. Bảo dưỡng cũng theo flow tương tự (ảnh bắt buộc, camera-only, `anh_realtime=true`). `buildTripCard(trip)` là **async** — query `xe` để lấy `xeConfig` (`cach_tinh_luong`, `gia_tri_luong`), build `diemSection` div với id `diem-section-{tripId}`, gọi `buildDiemHanhTrinhSection(tripId).then(el => diemSection.appendChild(el))`, rồi gọi `buildCompleteForm(trip, xeConfig)` synchronously (truyền full `trip` object, không chỉ `tripId`). `loadActiveTrips()` dùng `for...of` với `await` thay vì `forEach` vì `buildTripCard` là async. `buildCompleteForm(trip, xeConfig)` — nhận full trip object; preview text "Lương chuyến" hiện `trip.luong_chuyen` cố định từ DB, không tính lại; `btnConfirm.onclick` gọi `submitComplete(trip.id, trip.luong_chuyen)`. Không còn live-update listener theo doanh_thu. `submitComplete(tripId, luongChuyen)` — dùng `luongChuyen` trực tiếp (không gọi `calcLuongChuyen`). **Diem hanh trinh**: `buildDiemHanhTrinhSection(tripId)` async — query `diem_hanh_trinh` order `thu_tu`, render từng điểm với badge loại (`'boc_hang'`→📦 Bốc / `'giao_hang'`→🚩 Giao), địa chỉ (nếu có `lat`+`lng` thì wrap thành `<a href='https://www.google.com/maps?q={lat},{lng}' target='_blank'>`, ngược lại plain text), trạng thái (✅ + thumbnail nếu `hoan_thanh`, nút "✓ Xác nhận tại điểm" nếu `chua_thuc_hien`). Modal `#confirm-diem-modal`: chụp ảnh camera-only bắt buộc + GPS bắt buộc. `submitConfirmDiem()`: validate photo → GPS → upload (bucket `receipts`) → UPDATE `diem_hanh_trinh` (trang_thai=`'hoan_thanh'`, anh_url, anh_realtime=true, lat, lng) → check pending còn lại → nếu 0 pending thì UPDATE `trips.trang_thai_giao='dang_thuc_hien'` → re-render diem section in-place (`diemSection.textContent=''` + `buildDiemHanhTrinhSection().then()`).
-- `driver.html` — owner quản lý tài xế & công nợ, export Excel. Bảng có **5 cột**: Họ và tên | SĐT | Xe đang chạy | Đang giữ | Thao tác — **không có month filter** ở page level, **không có PDF**. `loadDrivers()` build `xeMap[tai_xe_id → bien_so]` từ query `xe` (non-null `tai_xe_id`), sau đó dùng `calcDriverBalance()` để tính balance. **Balance** = Σ`tam_ung`(trips hoàn thành) + Σ`tam_ung_thang` − Σ`hoan_ung`(trips hoàn thành) − Σ`chi_phi_driver_paid`(ALL trips, non-legacy); màu đỏ nếu > 0, xanh nếu ≤ 0. Click tên tài xế → `openTripsModal(driverId, driverName, driverEmail, driverSdt, driverBienSo)` — modal 5 tham số, hiện info section (email/SĐT/xe), month filter nội bộ, `#trips-modal-list` chứa bảng trips (render bởi `renderTripsList()` riêng biệt), nút xóa tài xế ở cuối modal (async handler: `await deleteDriver()`, chỉ `closeTripsModal()` khi return `true`). `deleteDriver(id, name)` là async, return `true`/`false`. Click cột "Đang giữ" → `openBalanceModal(driverId, driverName)` hiện **debt ledger timeline**: query trip IDs (all-time, allDriverTrips), song song query trips hoàn thành (tam_ung/hoan_ung > 0), tam_ung_thang, chi_phi_chuyen (nguon_tien='driver_paid', is_legacy=false, in allTripIds); build `entries[]` `{ date, type, label, amount, sign }` — trip tam_ung → `type:'trip_advance'` sign +1, trip hoan_ung → `type:'refund'` sign -1, tam_ung_thang → `type:'advance'` date=`thang+'-01'` sign +1, chi_phi_driver_paid → `type:'expense_driver'` sign -1; sort tăng dần; tính `running_balance` tích lũy; render bảng 5 cột (Ngày | Loại | Mô tả | Số tiền | Số dư) với badge màu (xám/xanh/cam/đỏ theo type, `expense_driver` badge: `background:#ffebee;color:#c62828`) + dòng tổng "Tổng đang giữ" border-top dày. Date parse dùng local methods (`getDate/getMonth/getFullYear`) — KHÔNG dùng UTC methods. Nút `+ Tạm ứng` → `openAdvanceModal()` INSERT vào `tam_ung_thang`. Nút "💰 Xem lương" → `luong-thang.html`. `addDriver()` check trùng email + SĐT qua `maybeSingle()` trước INSERT, include `owner_id: ownerProfileId`.
-- `vehicles.html` — owner quản lý xe + bảo dưỡng inline. Click biển số → modal đổi tài xế (kiểm tra tài xế đang lái xe khác). Nút "📋 Chuyến" → modal popup xem trips của xe, query bằng `xe_id` (KHÔNG phải `tai_xe_id`) để lấy đúng chuyến của xe đó qua mọi tài xế — filter tháng bên trong modal, `#trips-filter-month`. `changeStatus(id, status, taiXeId)` cycle 2 chiều tùy driver: có tài xế → `hoat_dong ↔ bao_duong`; không tài xế → `tam_nghi ↔ bao_duong`. `trang_thai` tự set `hoat_dong`/`tam_nghi` theo `tai_xe_id`. `nam_sx` là DB column nhưng ẩn khỏi UI. `tai_xe_id` unique được enforce ở app, không có DB constraint. Dùng `formatBienSo(s)` từ `shared.js` khi hiển thị và khi blur khỏi input biển số. Bảng xe có thêm 2 cột inline-editable: "Cách tính lương" (select `khoan_chuyen`/`phan_tram_doanh_thu`) và "Giá trị" (input số, suffix đổi giữa `đ`/`%` theo mode). Onchange select → auto-save cả `cach_tinh_luong` và `gia_tri_luong=0` vào DB + reset input. Blur input → validate pct 0–100 + save. Form "Thêm xe mới" cũng có 2 field tương ứng; onchange dropdown trong form phải clear value+rawValue+suffix. `addDotFormat` dùng cho input giá trị lương (xem `driver-page.html` pattern). Khi switch mode, phải set `input.dataset.rawValue = ''` explicitly (programmatic value change không trigger input event). **Bảo dưỡng**: `PRESET_PARTS` là array 21 bộ phận hardcode (file-level const). Form bảo dưỡng có thêm `maint-bophan-{id}` (text input với datalist `bophan-suggestions-{id}`) và `maint-ngaytiep-{id}` (date). `loadMaintenance()` populate datalist từ lịch sử + PRESET_PARTS (unique merge), thêm filter `<select>` lọc theo `bo_phan` phía trên bảng. Bảng history query dùng join `.select('*, tai_xe:users!tai_xe_id(full_name)')`, các cột: Ngày | Bộ phận | Người nhập | Loại | Mô tả | Chi phí | (sửa/xóa). "Người nhập": `nguoi_nhap === 'driver'` hiện `👤 {full_name}`, `'owner'` hiện `🏢 Chủ xe`. Cột Mô tả append link `→ Xem chuyến` (mở tab mới) nếu `trip_id` có giá trị. `loadVehicles()` query thêm `bao_duong.ngay_tiep_theo`, build `nextMaintMap[xe_id]` = earliest `ngay_tiep_theo`, append badge cảnh báo vào plateCell: `⚠️ N ngày` (warning) nếu 0 ≤ daysLeft ≤ 7, `🔴 Quá hạn N ngày` (danger) nếu daysLeft < 0. **Bảng lương km**: card riêng cho owner define bảng lương theo `loai_xe` + km range. `loadKmRates()` query `bang_luong_km` where `owner_id`, render bảng + filter dropdown theo loại xe. `addKmRate()` validate + INSERT. `deleteKmRate(id)` confirm + DELETE. `init()` calls `await loadKmRates()` + `addDotFormat(#km-so-tien)`.
-- `style.css` — design system shared, dùng CSS variables.
-- `shared.js` — JS utilities shared (xem dưới).
-- `luong-thang.html` — owner quản lý bảng lương tháng + xuất PDF phiếu lương. Toggle `cho_phep_xem_luong` trên `users` (owner row) cho phép driver xem lương. Query logic tách thành `fetchLuongData(thangStr)` (dùng chung cho cả render bảng và in PDF): select drivers với `id, full_name, sdt`, query xe, upsert `luong_thang` rows (auto-INSERT nếu chưa có, snapshot `luong_co_ban` từ xe, `ngay_lam=26`), query trips theo tháng. Bảng **13 cột**: Tên | Biển số | Lương CB | Ngày làm | Σ chuyến | Phụ cấp | Thưởng | Σ tạm ứng | Σ hoàn ứng | Khấu trừ | THỰC LĨNH | Sửa | **In phiếu**. PDF: `buildPayslipHTML(luongRow, driver, xe, trips, thangStr)` trả về DOM element (width 595px, toàn bộ inline style). `printPayslip()` dùng `html2canvas` (scale 2) + `jspdf.jsPDF` để download file đơn. `printAllPayslips()` loop qua tất cả drivers tạo 1 PDF nhiều trang. Nút "🖨️ In tất cả" ở header desktop + hamburger menu (`menu-print-all`). `slugify()` local helper: `.replace(/đ/g,'d').replace(/Đ/g,'d').normalize('NFD').replace(/[̀-ͯ]/g,'')...`. CDN: `jspdf@2.5.1` (UMD) → global `jspdf.jsPDF`; `html2canvas@1.4.1` → global `html2canvas`. Edit modal cập nhật `ngay_lam, phu_cap, thuong, khau_tru, ghi_chu`. `ownerProfileId` = `auth.profile.id`.
-- `luong-cua-toi.html` — driver xem lương của mình. Permission gate: query `users.owner_id` của driver → query `users.cho_phep_xem_luong` của owner; nếu false/null → hiện card đỏ "chưa bật". `initPage()` tạo 2 child div `#balance-container` + `#luong-container` bên trong `#main-content`; gọi `loadBalanceCard()` (không await) + `loadLuong()` (await). **Balance card** (`#balance-container`): hiện số dư tạm ứng bằng `calcDriverBalance()` — màu warning nếu > 0 (đang giữ), success nếu < 0 (chủ nợ). Hiện danh sách tháng dạng card (`#luong-container`, thực lĩnh lớn, nút Chi tiết → modal breakdown). `currentProfileId` = `auth.profile.id`.
-- `sw.js` + `manifest.json` — PWA, chỉ register từ `bai10.html`. STATIC_ASSETS chỉ gồm `bai10.html`, `style.css`, `manifest.json`, và icons — **`shared.js` và tất cả admin pages không được pre-cache**, chỉ được dynamic-cache khi đã navigate tới. Khi deploy thay đổi cho bất kỳ file nào trong STATIC_ASSETS, phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v22`) để invalidate cache cũ. Có push handler (hiện notification) + notificationclick handler (focus tab cũ hoặc mở tab mới tới URL trong `notification.data.url`).
+
+#### `bai10.html` — landing + auth
+- Landing page + Google OAuth + role redirect
+- Có `<style>` block riêng (~220 dòng) cho hero/stats/features layout — KHÔNG dùng `.card` chuẩn
+- `checkUserRole`: email không tìm thấy trong `users` → hiện inline error card (ẩn login UI, card đỏ + nút "Thử lại bằng tài khoản khác" gọi `signOut()` + redirect); **không INSERT**
+- `loadStats()`: query `trips`/`users` công khai cho landing stats (sẽ break nếu bật RLS)
+- Local `formatStatNumber` ≠ `shared.formatMoney`: bai10 hiện dạng rút gọn `1.2B`/`345M`/`12K`
+- OAuth `redirectTo`: `window.location.origin + '/bai10.html'`
+
+#### `owner-dashboard.html` — owner xem báo cáo + tạo chuyến
+- Module-level vars: `currentOwnerProfileId`, `tripsChannel`, `xeList`, `driverList`, `pendingTripData`
+
+**Trip table**
+- 7 cột: Ngày | Tuyến đường | Trạng thái | Doanh thu | Chi phí | Lợi nhuận | Chi tiết
+- Cột "Trạng thái" (cột 3) tạo thủ công trong `renderTrips()` bằng `row.insertBefore(statusCell, row.children[2])` — badge `🚛 Đang chạy` (`--primary`) / `✅ Hoàn thành` (`--success`); không nằm trong values array
+- Mobile ≤600px: ẩn cột 5 (Chi phí) + cột 7 (Lương) qua `nth-child` trong `<style>` block ở `<head>`
+- Row highlight: click + touchend → xóa highlight cũ trên `#report-body tr`, set `background:#e3f2fd` cho row vừa tap
+- Header có nav đến driver/vehicles; có floating AI chatbot (FAB góc phải) gọi `/api/chat`; `driverMap` trong chatbot context filter `.eq('owner_id', currentOwnerProfileId)`
+
+**Notify panel** (chung cho 4 trang owner)
+- `#btn-notify` → `#notify-panel` (fixed top:64px right:16px, click-outside để đóng), 4 toggle (notify_new_trip / notify_complete / notify_expense / notify_maintenance), load/save qua `notify_settings`
+- `setupPushNotifications(userId)` chạy mỗi lần login
+- JS dependencies (`VAPID_PUBLIC_KEY`, `urlBase64ToUint8Array`, `setupPushNotifications`, `loadNotifySettings`, `saveNotifySetting`, `toggleNotifyPanel`) định nghĩa **local trong mỗi file** (không phải `shared.js`); dùng `ownerProfileId` (trừ owner-dashboard dùng `currentOwnerProfileId`)
+
+**Tạo chuyến** (`#new-trip-modal`)
+- 2 mode qua tab buttons (`tab-co-dinh`/`tab-theo-km`) + hidden `#nt-loai-luong`; `setTripTab(mode)` toggle UI
+- `#nt-tuyen-duong` luôn hiện (tên tuyến cho `co_dinh`; bị bỏ qua ở `theo_km`)
+- `#nt-co-dinh-block` (ẩn khi `theo_km`) chứa `#nt-tien-chuyen` dùng `addDotFormat`
+- Mode `theo_km`: gọi `POST /api/maps`, lookup `bang_luong_km` → `luong_chuyen`. Query: `.eq('loai_xe', xe.loai_xe).lte('km_tu', km).or('km_den.gte.'+km+',km_den.is.null').limit(1)` — dùng `.limit(1)` (KHÔNG `.maybeSingle()`), access `rateRows[0]`
+- Mode `co_dinh`: `luong_chuyen = tien_co_dinh`, skip Maps API
+- `buildDiemRow(containerId)`: input địa chỉ + hidden lat/lng + nút GPS + nút xóa; `parseMapsUrl()` detect Google Maps URL (pattern `/@lat,lng` hoặc `?query=lat,lng`) → auto-fill lat/lng + tô xanh; gõ text thường thì clear lat/lng
+- `collectDiems(containerId)`: trả `[{dia_chi, lat, lng}]`
+- Waypoints cho Maps API: chỉ giao points (không trộn bốc), `giaoWaypoints = giao.slice(0,-1)`; reorder: `[...optimized_order.map(i => giaoWaypoints[i]), giaoDiems[last]]`
+- INSERT `trips` (trang_thai=`'dang_chay'`, trang_thai_giao=`'cho_nhan'`) + bulk INSERT `diem_hanh_trinh` (loại: `'boc_hang'`/`'giao_hang'`) + notify driver
+
+**Preview flow**
+- Nút "Tạo chuyến" trong `#new-trip-modal` gọi `previewTrip()` — KHÔNG gọi `submitNewTrip()`
+- `previewTrip()`: validate → build `pendingTripData = { xeId, driverId, xe, driver, diem_boc, diem_giao, optimized_order:[], mode, tien_co_dinh }` → đóng new-trip-modal → mở `#preview-trip-modal` → fire-and-forget `fetchKmPreview()` (chỉ khi `theo_km`)
+- `fetchKmPreview()`: gọi `/api/maps` async; sau khi resolve guard `if (!pendingTripData) return` (race: user click "← Sửa lại" khi đang chờ); update `#preview-km` + `#preview-km-input`
+- `updateLuongPreview()`: đọc `#preview-km-input` → query `bang_luong_km` → hiện `#preview-luong`; gọi từ `fetchKmPreview()` và từ `oninput` trên `#preview-km-input`
+- `confirmCreateTrip()`: `co_dinh` → dùng `tien_co_dinh`; `theo_km` → đọc `#preview-km-input`, query lại `bang_luong_km` (không dùng cached value)
+- `closePreviewModal()`: đóng preview → mở lại new-trip-modal → `pendingTripData = null`
+- Cả 2 modals dùng inline styles (không có `.modal`/`.modal-content` CSS class)
+
+**Local helpers**: `addDotFormat`, `numberToVietnamese` (local, KHÔNG có trong `shared.js`)
+
+**Dead code**: `submitNewTrip()` vẫn còn trong file nhưng không bao giờ được gọi (đã thay bằng preview flow) — có thể xóa an toàn
+
+---
+
+#### `trip-detail.html` — xem chi tiết chuyến (shared owner + driver)
+- URL param: `?trip_id=`. Module-level `currentProfile` set trong `initPage()`
+- Auth: dùng `getSession() + getUserProfile()` — KHÔNG dùng `requireRole`
+- Driver chỉ xem trip của mình; owner xem tất cả. `ownerId` cho driver: query `users.select('owner_id').eq('id', currentProfile.id)` qua FK
+- Trips query: `.select('*, tai_xe:users!tai_xe_id(full_name), xe:xe(bien_so)')`
+- `goBack()`: ưu tiên `document.referrer`, fallback theo `currentProfile.role`
+- Driver + dang_chay: thêm/sửa/xóa chi phí inline; ảnh bắt buộc + camera-only + GPS bắt buộc
+- Ảnh hóa đơn: `openImageModal(url)` fullscreen overlay (KHÔNG mở tab mới)
+- Badge `⚠️ Cũ` cho entries `is_legacy=true`; `📷⚠️` tooltip nếu `anh_realtime === false`
+- Cột số tiền prefix: `👤` (driver_paid) / `🏢` (owner_paid) / trống (legacy)
+- Add/edit form: select `nguon_tien` bắt buộc (placeholder → validation fail)
+- EXPENSE_TYPES: `{ xang, bai_xe, khac }` — `sua_xe` đã bỏ
+- Local helpers: `numberToVietnamese`, `addMoneyHint` (copy từ driver-page.html)
+
+---
+
+#### `driver-page.html` — driver xem + thực hiện chuyến
+- Driver **không tự tạo chuyến**; owner tạo và assign
+- Module-level vars: `currentProfileId`, `currentDriverName`, `currentOwnerId` (từ `users.owner_id`), `currentBienSo`, `currentXeId`, `confirmDiemData`, `confirmDiemPhoto`
+
+**Tabs + queries**
+- Tab "Đang chạy": `.eq('trang_thai', 'dang_chay').in('trang_thai_giao', ['cho_nhan', 'dang_thuc_hien'])`
+- Tab "Hoàn thành": link đến `trip-detail.html?trip_id=`
+- `initPage()` kiểm tra xe assigned: nếu không có xe → red warning card + ẩn `#btn-bao-duong`; nếu có → hiện `#btn-bao-duong`
+
+**Trip card (async)**
+- `buildTripCard(trip)` là **async** — query `xe` lấy `xeConfig`, build `diemSection` div (`diem-section-{tripId}`), gọi `buildDiemHanhTrinhSection(tripId).then(...)`, rồi `buildCompleteForm(trip, xeConfig)` synchronously
+- `loadActiveTrips()` dùng `for...of` + `await` (không dùng `forEach`) vì `buildTripCard` là async
+- `buildCompleteForm(trip, xeConfig)`: hiện `trip.luong_chuyen` cố định từ DB (không tính lại); `btnConfirm.onclick` → `submitComplete(trip.id, trip.luong_chuyen)`
+- `submitComplete(tripId, luongChuyen)`: dùng `luongChuyen` trực tiếp (không gọi `calcLuongChuyen`)
+
+**Diem hanh trinh**
+- `buildDiemHanhTrinhSection(tripId)` async — query `diem_hanh_trinh` order `thu_tu`, render badge loại (`'boc_hang'`→📦 / `'giao_hang'`→🚩), địa chỉ (GPS link nếu có lat/lng), trạng thái (✅ thumbnail / nút "✓ Xác nhận tại điểm")
+- Modal `#confirm-diem-modal`: camera-only + GPS bắt buộc
+- `submitConfirmDiem()`: validate photo → GPS → upload (bucket `receipts`) → UPDATE `diem_hanh_trinh` (trang_thai=`'hoan_thanh'`, anh_realtime=true) → nếu 0 pending thì UPDATE `trips.trang_thai_giao='dang_thuc_hien'` → re-render diem section in-place
+
+**Chi phí + bảo dưỡng**
+- EXPENSE_TYPES: `{ xang, bai_xe, khac }` — `sua_xe` đã bỏ (dùng `bao_duong`)
+- Thêm chi phí: camera-only, `anh_realtime=true`, `is_legacy=false`. Sửa: đổi ảnh → camera-only `anh_realtime=true`; xóa ảnh → `anh_realtime=null`; giữ nguyên → giữ giá trị cũ
+- `#btn-bao-duong` → `openMaintenanceModal()` → INSERT `bao_duong` + GPS bắt buộc + `notifyOwner('maintenance', ...)`
+
+**Local helpers**: `numberToVietnamese(n)` (capitalize first letter), `addMoneyHint(input)` (dấu chấm nghìn, raw digits trong `input.dataset.rawValue`). Submit functions đọc `dataset.rawValue || .value`
+
+**Dead code**: `#btn-new-trip` và form tạo chuyến tồn tại trong HTML nhưng `initPage()` không bao giờ show — có thể xóa an toàn
+
+---
+
+#### `driver.html` — owner quản lý tài xế + công nợ
+- Bảng 5 cột: Họ và tên | SĐT | Xe đang chạy | Đang giữ | Thao tác — không có month filter, không có PDF
+- `loadDrivers()`: build `xeMap[tai_xe_id → bien_so]` từ xe có non-null `tai_xe_id`, dùng `calcDriverBalance()`
+- **Balance** = Σ`tam_ung`(hoàn thành) + Σ`tam_ung_thang` − Σ`hoan_ung`(hoàn thành) − Σ`chi_phi_driver_paid`(ALL trips, non-legacy); đỏ nếu > 0, xanh nếu ≤ 0
+
+**Modals**
+- Click tên tài xế → `openTripsModal(driverId, driverName, driverEmail, driverSdt, driverBienSo)` — modal 5 tham số, info section + month filter nội bộ + nút xóa tài xế (async: `await deleteDriver()`, chỉ close modal khi return `true`)
+- Click "Đang giữ" → `openBalanceModal(driverId, driverName)`: debt ledger timeline
+  - Entries `{ date, type, label, amount, sign }`: `trip_advance` (+1), `refund` (-1), `advance` (+1), `expense_driver` (-1)
+  - Date parse: local methods `getDate/getMonth/getFullYear` — KHÔNG dùng UTC methods
+  - Bảng 5 cột: Ngày | Loại | Mô tả | Số tiền | Số dư; badge `expense_driver`: `background:#ffebee;color:#c62828`
+  - Dòng tổng "Tổng đang giữ" với border-top dày
+- `+ Tạm ứng` → `openAdvanceModal()` → INSERT `tam_ung_thang`
+- `addDriver()`: check trùng email + SĐT qua `maybeSingle()` trước INSERT, include `owner_id: ownerProfileId`
+
+---
+
+#### `vehicles.html` — owner quản lý xe + bảo dưỡng
+- Click biển số → modal đổi tài xế (kiểm tra tài xế đang lái xe khác); dùng `formatBienSo(s)` khi hiển thị và blur
+- `changeStatus(id, status, taiXeId)`: có tài xế → `hoat_dong ↔ bao_duong`; không tài xế → `tam_nghi ↔ bao_duong`
+- "📋 Chuyến" → modal query bằng `xe_id` (KHÔNG phải `tai_xe_id`) — lấy đúng chuyến của xe qua mọi tài xế
+- `nam_sx` tồn tại trong DB nhưng ẩn khỏi UI; `tai_xe_id` unique enforce ở app, không có DB constraint
+
+**Inline salary editing**
+- 2 cột: "Cách tính lương" (select `khoan_chuyen`/`phan_tram_doanh_thu`) + "Giá trị" (input, suffix `đ`/`%` theo mode)
+- Onchange select → auto-save + reset `gia_tri_luong=0` vào DB. Blur input → validate pct 0–100 + save
+- Switch mode: phải set `input.dataset.rawValue = ''` explicitly (programmatic change không trigger input event)
+- Form "Thêm xe mới" cũng có 2 field tương ứng; onchange dropdown trong form phải clear value+rawValue+suffix
+
+**Bảo dưỡng**
+- `PRESET_PARTS`: array 21 bộ phận hardcode (file-level const)
+- Form có `maint-bophan-{id}` (text input với datalist `bophan-suggestions-{id}`) + `maint-ngaytiep-{id}` (date)
+- `loadMaintenance()`: populate datalist từ lịch sử + PRESET_PARTS (unique merge); filter `<select>` theo `bo_phan`
+- Bảng history join: `.select('*, tai_xe:users!tai_xe_id(full_name)')` — "Người nhập": `'driver'` → `👤 {full_name}`, `'owner'` → `🏢 Chủ xe`
+- Cột Mô tả append `→ Xem chuyến` (mở tab mới) nếu `trip_id` có giá trị
+- `loadVehicles()` query `bao_duong.ngay_tiep_theo`; badge: `⚠️ N ngày` (0–7 ngày), `🔴 Quá hạn N ngày` (< 0)
+
+**Bảng lương km**
+- Card riêng cho owner define `bang_luong_km` theo `loai_xe` + km range
+- `init()` calls `await loadKmRates()` + `addDotFormat(#km-so-tien)`
+
+---
+
+#### `luong-thang.html` — owner quản lý bảng lương tháng + PDF
+- Toggle `cho_phep_xem_luong` trên `users` (owner row) cho phép driver xem lương
+- `fetchLuongData(thangStr)` dùng chung cho render + PDF: select drivers, query xe, upsert `luong_thang` (auto-INSERT nếu chưa có, snapshot `luong_co_ban`, `ngay_lam=26`), query trips theo tháng
+- Bảng 13 cột: Tên | Biển số | Lương CB | Ngày làm | Σ chuyến | Phụ cấp | Thưởng | Σ tạm ứng | Σ hoàn ứng | Khấu trừ | THỰC LĨNH | Sửa | In phiếu
+- PDF: `buildPayslipHTML(luongRow, driver, xe, trips, thangStr)` → DOM element (width 595px, inline style); `printPayslip()` dùng `html2canvas` (scale 2) + `jspdf.jsPDF`; `printAllPayslips()` tạo 1 PDF nhiều trang
+- Nút "🖨️ In tất cả" ở header desktop + hamburger menu (`menu-print-all`)
+- CDN: `jspdf@2.5.1` (UMD) → global `jspdf.jsPDF`; `html2canvas@1.4.1` → global `html2canvas`
+- Local helper `slugify()`: `.replace(/đ/g,'d').replace(/Đ/g,'d').normalize('NFD').replace(/[̀-ͯ]/g,'')...`
+- Edit modal cập nhật `ngay_lam, phu_cap, thuong, khau_tru, ghi_chu`. `ownerProfileId` = `auth.profile.id`
+
+---
+
+#### `luong-cua-toi.html` — driver xem lương của mình
+- Permission gate: query `users.owner_id` của driver → query `users.cho_phep_xem_luong` của owner; nếu false/null → hiện card đỏ "chưa bật"
+- `initPage()` tạo 2 child div `#balance-container` + `#luong-container` bên trong `#main-content`; gọi `loadBalanceCard()` (không await) + `loadLuong()` (await)
+- **Balance card** (`#balance-container`): hiện số dư bằng `calcDriverBalance()` — màu warning nếu > 0 (đang giữ), success nếu < 0 (chủ nợ)
+- `#luong-container`: danh sách tháng dạng card, thực lĩnh lớn, nút Chi tiết → modal breakdown
+- `currentProfileId` = `auth.profile.id`
+
+---
+
+#### `sw.js` + `manifest.json` — PWA
+- Chỉ register từ `bai10.html`
+- STATIC_ASSETS: `bai10.html`, `style.css`, `manifest.json`, icons — **`shared.js` và tất cả admin pages không được pre-cache**, chỉ dynamic-cache khi navigate tới
+- Khi deploy thay đổi cho bất kỳ file nào trong STATIC_ASSETS, phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v23`) để invalidate cache cũ
+- Push handler + notificationclick handler (focus tab cũ hoặc mở tab mới tới URL trong `notification.data.url`)
+
+---
 
 ### shared.js (BẮT BUỘC dùng cho mọi page mới)
 ```
@@ -81,7 +238,7 @@ balance = tam_ung_trips + tam_ung_thang_total - hoan_ung_trips - chi_phi_driver_
 
 **Workaround Supabase nested filter**: KHÔNG dùng `.eq('trip.owner_id', ...)` vì alias không work. Thay bằng 2-step: query allTripIds trước, rồi `.in('trip_id', allTripIds)`.
 
-**DB migration** (phải chạy thủ công trong Supabase SQL editor):
+**Applied migration** (đã apply; giữ lại để tham khảo schema history):
 ```sql
 ALTER TABLE chi_phi_chuyen ADD COLUMN IF NOT EXISTS nguon_tien text;
 ALTER TABLE chi_phi_chuyen ADD CONSTRAINT chi_phi_chuyen_nguon_tien_check
@@ -234,7 +391,7 @@ notify_settings    (user_id uuid PK, notify_new_trip bool, notify_complete bool,
 - `ngay_bat_dau` dùng `new Date().toISOString()` khi insert, hiển thị qua `formatDate()` thành `HH:MM - DD/MM/YY`.
 - Filter tháng dùng: `.gte('ngay_bat_dau', start + 'T00:00:00').lt('ngay_bat_dau', endStr + 'T00:00:00')`.
 - **DB trigger** (cần tạo trong Supabase): sau mỗi insert/update/delete trên `chi_phi_chuyen`, trigger tự update `trips.chi_phi = SUM(so_tien)` của trip tương ứng. Nếu trigger chưa tồn tại, `trips.chi_phi` sẽ không tự cập nhật.
-- **Pending migrations** (chạy thủ công trong Supabase SQL editor nếu chưa chạy):
+- **Applied migrations** (đã apply; giữ lại để tham khảo schema history):
   ```sql
   -- bang_luong_km: đổi từ xe_id sang loai_xe
   ALTER TABLE bang_luong_km DROP COLUMN IF EXISTS xe_id;
@@ -283,4 +440,3 @@ notify_settings    (user_id uuid PK, notify_new_trip bool, notify_complete bool,
   - `driver-page.html` → `currentOwnerId` (module level, query `users.owner_id where id = currentProfileId` trong `initPage()`)
   - `trip-detail.html` → `ownerId` (local trong `initPage()`: nếu owner thì `currentProfile.id`, nếu driver thì query DB; nếu null thì toast + redirect)
 - **FK trên `notify_settings` và `push_subscriptions`**: cột `user_id` phải references `public.users(id)`, **không phải** `auth.users(id)`. Nếu tạo FK sai sang `auth.users`, insert/upsert sẽ fail với foreign key violation vì app dùng `users.id` (DB-generated UUID), không phải Auth UUID.
-
