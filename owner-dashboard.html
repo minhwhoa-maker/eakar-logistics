@@ -628,7 +628,7 @@
             }
 
             async function openNewTripModal() {
-                const { data: xeData } = await sb.from('xe').select('id, bien_so, loai_xe, cach_tinh_luong, gia_tri_luong').eq('owner_id', currentOwnerProfileId).neq('trang_thai', 'tam_nghi')
+                const { data: xeData } = await sb.from('xe').select('id, bien_so, loai_xe, tai_xe_id, cach_tinh_luong, gia_tri_luong').eq('owner_id', currentOwnerProfileId).neq('trang_thai', 'tam_nghi')
                 xeList = xeData || []
                 const { data: driverData } = await sb.from('users').select('id, full_name').eq('role', 'driver').eq('owner_id', currentOwnerProfileId)
                 driverList = driverData || []
@@ -646,18 +646,7 @@
                     xeSelect.appendChild(opt)
                 })
 
-                const driverSelect = document.getElementById('nt-driver')
-                driverSelect.textContent = ''
-                const driverPlaceholder = document.createElement('option')
-                driverPlaceholder.value = ''
-                driverPlaceholder.textContent = '-- Chọn tài xế --'
-                driverSelect.appendChild(driverPlaceholder)
-                driverList.forEach(d => {
-                    const opt = document.createElement('option')
-                    opt.value = d.id
-                    opt.textContent = d.full_name || 'Chưa đặt tên'
-                    driverSelect.appendChild(opt)
-                })
+                onXeChange()
 
                 document.getElementById('nt-boc-list').textContent = ''
                 document.getElementById('nt-giao-list').textContent = ''
@@ -676,6 +665,31 @@
 
             function closeNewTripModal() {
                 document.getElementById('new-trip-modal').style.display = 'none'
+            }
+
+            function onXeChange() {
+                const xeId = document.getElementById('nt-xe').value
+                const xe = xeList.find(x => x.id === xeId)
+                const driverHidden = document.getElementById('nt-driver')
+                const driverDisplay = document.getElementById('nt-driver-display')
+
+                if (!xeId || !xe) {
+                    driverDisplay.textContent = '-- Chọn xe trước --'
+                    driverDisplay.style.color = 'var(--text-muted)'
+                    driverHidden.value = ''
+                    return
+                }
+
+                const driver = driverList.find(d => d.id === xe.tai_xe_id)
+                if (driver) {
+                    driverDisplay.textContent = driver.full_name || 'Chưa đặt tên'
+                    driverDisplay.style.color = '#1a1a2e'
+                    driverHidden.value = driver.id
+                } else {
+                    driverDisplay.textContent = '⚠️ Xe này chưa có tài xế'
+                    driverDisplay.style.color = 'var(--danger)'
+                    driverHidden.value = ''
+                }
             }
 
             function collectDiems(containerId) {
@@ -951,11 +965,12 @@
             <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
                 <div style="flex:1;min-width:200px">
                     <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Xe</label>
-                    <select id="nt-xe" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:#1a1a2e;background:white"></select>
+                    <select id="nt-xe" onchange="onXeChange()" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:#1a1a2e;background:white"></select>
                 </div>
                 <div style="flex:1;min-width:200px">
                     <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Tài xế</label>
-                    <select id="nt-driver" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:#1a1a2e;background:white"></select>
+                    <div id="nt-driver-display" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:var(--text-muted);background:var(--bg);box-sizing:border-box">-- Chọn xe trước --</div>
+                    <input type="hidden" id="nt-driver">
                 </div>
             </div>
 
