@@ -664,6 +664,7 @@
                 setTripTab('co_dinh')
                 const tienEl = document.getElementById('nt-tien-chuyen')
                 if (!tienEl._dafInit) { addDotFormat(tienEl); tienEl._dafInit = true }
+                document.getElementById('nt-tuyen-duong').value = ''
                 tienEl.value = ''
                 tienEl.dataset.rawValue = ''
 
@@ -722,8 +723,15 @@
                 document.getElementById('preview-xe-driver').innerHTML =
                     `<p style="margin:0 0 6px">🚛 <strong>${xe?.bien_so || ''}</strong> — ${driver?.full_name || ''}</p>`
 
-                const allAddrs = [...bocDiems.map(d => d.dia_chi), ...giaoDiems.map(d => d.dia_chi)]
-                document.getElementById('preview-tuyen-duong').value = allAddrs.join(' → ')
+                let tuyenDuong
+                if (mode === 'co_dinh') {
+                    tuyenDuong = document.getElementById('nt-tuyen-duong').value.trim()
+                    if (!tuyenDuong) { showToast('Vui lòng nhập tuyến đường!', 'error'); return }
+                } else {
+                    const allAddrs = [...bocDiems.map(d => d.dia_chi), ...giaoDiems.map(d => d.dia_chi)]
+                    tuyenDuong = allAddrs.join(' → ')
+                }
+                document.getElementById('preview-tuyen-duong').value = tuyenDuong
 
                 if (mode === 'co_dinh') {
                     document.getElementById('preview-km-block').style.display = 'none'
@@ -923,6 +931,23 @@
         <div style="background:var(--white);border-radius:var(--radius);padding:24px;width:640px;max-width:95%;max-height:90vh;overflow-y:auto;">
             <h3 style="margin:0 0 16px">➕ Tạo chuyến mới</h3>
 
+            <div style="display:flex;gap:0;margin-bottom:16px;border-radius:var(--radius-sm);overflow:hidden;border:1.5px solid var(--border)">
+                <button id="tab-co-dinh" type="button" onclick="setTripTab('co_dinh')"
+                    style="flex:1;padding:10px;font-size:14px;border:none;cursor:pointer;background:var(--primary);color:white;font-weight:600">
+                    📌 Tuyến cố định
+                </button>
+                <button id="tab-theo-km" type="button" onclick="setTripTab('theo_km')"
+                    style="flex:1;padding:10px;font-size:14px;border:none;cursor:pointer;background:var(--bg);color:var(--text-muted);font-weight:400">
+                    📐 Tuyến ngoài
+                </button>
+            </div>
+            <input type="hidden" id="nt-loai-luong" value="co_dinh">
+
+            <div style="margin-bottom:10px">
+                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Tuyến đường</label>
+                <input type="text" id="nt-tuyen-duong" placeholder="VD: Đắk Lắk - Sài Gòn" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:#1a1a2e;box-sizing:border-box">
+            </div>
+
             <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
                 <div style="flex:1;min-width:200px">
                     <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Xe</label>
@@ -946,21 +971,11 @@
                 <button class="btn btn-gray" style="margin-top:6px;font-size:13px;padding:6px 12px" onclick="addDiemGiao()">+ Điểm giao</button>
             </div>
 
-            <div style="display:flex;gap:0;margin-bottom:16px;border-radius:var(--radius-sm);overflow:hidden;border:1.5px solid var(--border)">
-                <button id="tab-co-dinh" type="button" onclick="setTripTab('co_dinh')"
-                    style="flex:1;padding:10px;font-size:14px;border:none;cursor:pointer;background:var(--primary);color:white;font-weight:600">
-                    📌 Tuyến cố định
-                </button>
-                <button id="tab-theo-km" type="button" onclick="setTripTab('theo_km')"
-                    style="flex:1;padding:10px;font-size:14px;border:none;cursor:pointer;background:var(--bg);color:var(--text-muted);font-weight:400">
-                    📐 Chuyến ngoài tính theo Km
-                </button>
-            </div>
-            <input type="hidden" id="nt-loai-luong" value="co_dinh">
-
             <div id="nt-co-dinh-block" style="display:none;margin-bottom:12px">
-                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Tiền chuyến cố định (đ)</label>
-                <input type="text" id="nt-tien-chuyen" placeholder="0" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:#1a1a2e;box-sizing:border-box">
+                <div>
+                    <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Tiền chuyến cố định (đ)</label>
+                    <input type="text" id="nt-tien-chuyen" placeholder="0" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:#1a1a2e;box-sizing:border-box">
+                </div>
             </div>
 
             <div style="display:flex;gap:10px;justify-content:flex-end">
