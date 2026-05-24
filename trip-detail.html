@@ -378,11 +378,12 @@
         const closeBtn = document.createElement('button')
         closeBtn.textContent = '✕'
         closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;font-size:1.5em;background:none;border:none;color:white;cursor:pointer'
-        closeBtn.onclick = () => overlay.remove()
+        closeBtn.onclick = () => { overlay.remove(); document.body.classList.remove('modal-open') }
 
-        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) { overlay.remove(); document.body.classList.remove('modal-open') } })
         overlay.append(img, closeBtn)
         document.body.appendChild(overlay)
+        document.body.classList.add('modal-open')
     }
 
     function renderExpenses(expenses) {

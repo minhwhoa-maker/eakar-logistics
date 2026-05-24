@@ -34,6 +34,10 @@ body {
     color: var(--text);
 }
 
+.modal-open {
+    overflow: hidden;
+}
+
 /* --- HEADER --- */
 .header {
     background: var(--primary);

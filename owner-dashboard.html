@@ -10,10 +10,10 @@
         <script src="shared.js"></script>
         <style>
             @media (max-width: 600px) {
-                #report-body td:nth-child(4),
-                #report-body td:nth-child(6),
-                table thead tr th:nth-child(4),
-                table thead tr th:nth-child(6) {
+                #report-body td:nth-child(5),
+                #report-body td:nth-child(7),
+                table thead tr th:nth-child(5),
+                table thead tr th:nth-child(7) {
                     display: none;
                 }
             }
@@ -103,6 +103,7 @@
                         <tr>
                             <th>Ngày</th>
                             <th>Tuyến đường</th>
+                            <th>Trạng thái</th>
                             <th>Doanh thu</th>
                             <th>Chi phí</th>
                             <th>Lợi nhuận</th>
@@ -239,6 +240,18 @@
                         if (index === 4) cell.style.color = '#3498db'
                         row.appendChild(cell)
                     })
+
+                    const statusCell = document.createElement('td')
+                    const statusSpan = document.createElement('span')
+                    if (trip.trang_thai === 'dang_chay') {
+                        statusSpan.textContent = '🚛 Đang chạy'
+                        statusSpan.style.color = 'var(--primary)'
+                    } else {
+                        statusSpan.textContent = '✅ Hoàn thành'
+                        statusSpan.style.color = 'var(--success)'
+                    }
+                    statusCell.appendChild(statusSpan)
+                    row.insertBefore(statusCell, row.children[2])
 
                     const detailCell = document.createElement('td')
                     const detailBtn = document.createElement('button')
@@ -661,10 +674,12 @@
                 addDiemGiao()
 
                 document.getElementById('new-trip-modal').style.display = 'flex'
+                document.body.classList.add('modal-open')
             }
 
             function closeNewTripModal() {
                 document.getElementById('new-trip-modal').style.display = 'none'
+                document.body.classList.remove('modal-open')
             }
 
             function onXeChange() {
@@ -762,6 +777,7 @@
 
                 document.getElementById('new-trip-modal').style.display = 'none'
                 document.getElementById('preview-trip-modal').style.display = 'flex'
+                document.body.classList.add('modal-open')
 
                 if (mode !== 'co_dinh') fetchKmPreview()
             }
@@ -899,6 +915,7 @@
 
                     showToast('Tạo chuyến thành công', 'success')
                     document.getElementById('preview-trip-modal').style.display = 'none'
+                    document.body.classList.remove('modal-open')
                     pendingTripData = null
                     loadTrips()
                 } catch (err) {

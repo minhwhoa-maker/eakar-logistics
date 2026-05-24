@@ -562,11 +562,13 @@
                 maintModalChiPhiInitialized = true
             }
             document.getElementById('maintenance-modal').style.display = 'flex'
+            document.body.classList.add('modal-open')
             loadMaintenanceModal()
         }
 
         function closeMaintenanceModal() {
             document.getElementById('maintenance-modal').style.display = 'none'
+            document.body.classList.remove('modal-open')
             currentMaintXeId = null
         }
 
@@ -725,11 +727,13 @@
             tripsModalVehicleId = vehicleId
             document.getElementById('trips-modal-title').textContent = '🚛 Xe ' + formatBienSo(bienSo)
             document.getElementById('trips-modal').style.display = 'flex'
+            document.body.classList.add('modal-open')
             loadTripsModal()
         }
 
         function closeTripsModal() {
             document.getElementById('trips-modal').style.display = 'none'
+            document.body.classList.remove('modal-open')
             tripsModalVehicleId = null
         }
 
@@ -816,10 +820,12 @@
             select.value = currentTaiXeId || ''
             const modal = document.getElementById('change-driver-modal')
             modal.style.display = 'flex'
+            document.body.classList.add('modal-open')
         }
 
         function closeDriverModal() {
             document.getElementById('change-driver-modal').style.display = 'none'
+            document.body.classList.remove('modal-open')
             modalVehicleId = null
         }
 

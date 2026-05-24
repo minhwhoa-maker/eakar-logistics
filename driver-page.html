@@ -496,16 +496,17 @@
             btnYes.className = 'btn btn-success'
             btnYes.style.flex = '1'
             btnYes.textContent = 'Có, hoàn thành'
-            btnYes.onclick = () => { overlay.remove(); openForm('complete-' + trip.id) }
+            btnYes.onclick = () => { overlay.remove(); document.body.classList.remove('modal-open'); openForm('complete-' + trip.id) }
             const btnNo = document.createElement('button')
             btnNo.className = 'btn btn-gray'
             btnNo.style.flex = '1'
             btnNo.textContent = 'Chưa, quay lại'
-            btnNo.onclick = () => overlay.remove()
+            btnNo.onclick = () => { overlay.remove(); document.body.classList.remove('modal-open') }
             modalBtnRow.append(btnYes, btnNo)
             box.append(msg, modalBtnRow)
             overlay.appendChild(box)
             document.body.appendChild(overlay)
+            document.body.classList.add('modal-open')
         }
 
         btnBar.append(btnAddExp, btnComplete)
@@ -515,7 +516,7 @@
 
         const { data: xeConfig } = await sb.from('xe').select('cach_tinh_luong, gia_tri_luong').eq('id', currentXeId).maybeSingle()
         const addExpForm = buildAddExpenseForm(trip.id)
-        const completeForm = buildCompleteForm(trip.id, xeConfig)
+        const completeForm = buildCompleteForm(trip, xeConfig)
 
         const diemSection = document.createElement('div')
         diemSection.id = 'diem-section-' + trip.id
@@ -997,7 +998,8 @@
         return 0
     }
 
-    function buildCompleteForm(tripId, xeConfig) {
+    function buildCompleteForm(trip, xeConfig) {
+        const tripId = trip.id
         const wrap = document.createElement('div')
         wrap.setAttribute('data-form-id', 'complete-' + tripId)
         wrap.style.cssText = 'display:none;border-top:1px solid var(--border);padding-top:12px;margin-top:4px'
@@ -1025,7 +1027,7 @@
         const btnConfirm = document.createElement('button')
         btnConfirm.className = 'btn btn-success'
         btnConfirm.textContent = 'Xác nhận hoàn thành'
-        btnConfirm.onclick = () => submitComplete(tripId, xeConfig)
+        btnConfirm.onclick = () => submitComplete(trip.id, trip.luong_chuyen)
         const btnCancel = document.createElement('button')
         btnCancel.className = 'btn btn-gray'
         btnCancel.textContent = 'Hủy'
@@ -1035,30 +1037,18 @@
         const doanhThuGroup = field('Doanh thu thực tế (đ)', 'doanh_thu')
         const luongPreview = document.createElement('div')
         luongPreview.style.cssText = 'font-size:0.9em;color:var(--text-muted);padding:4px 0 8px'
-        const luongPreviewSpan = document.createElement('span')
-        luongPreviewSpan.id = 'luong-preview-' + tripId
-        luongPreviewSpan.textContent = formatMoney(calcLuongChuyen(xeConfig, 0))
-        luongPreview.append('Lương chuyến (tự tính): ', luongPreviewSpan)
-        if (xeConfig && xeConfig.cach_tinh_luong === 'phan_tram_doanh_thu') {
-            const doanhThuInput = doanhThuGroup.querySelector('[data-field="doanh_thu"]')
-            doanhThuInput.addEventListener('input', () => {
-                const rawVal = doanhThuInput.dataset.rawValue || doanhThuInput.value.replace(/\./g, '')
-                luongPreviewSpan.textContent = formatMoney(calcLuongChuyen(xeConfig, Number(rawVal) || 0))
-            })
-        }
+        luongPreview.textContent = 'Lương chuyến: ' + formatMoney(trip.luong_chuyen || 0)
 
         wrap.append(
             h4,
             doanhThuGroup,
             luongPreview,
-            field('Tạm ứng (đ)', 'tam_ung'),
-            field('Hoàn ứng (đ)', 'hoan_ung'),
             btnRow
         )
         return wrap
     }
 
-    async function submitComplete(tripId, xeConfig) {
+    async function submitComplete(tripId, luongChuyen) {
         const form = document.querySelector(`[data-form-id="complete-${tripId}"]`)
         const dtEl = form.querySelector('[data-field="doanh_thu"]')
         const dtVal = dtEl.dataset.rawValue || dtEl.value
@@ -1067,9 +1057,7 @@
             showToast('Vui lòng nhập doanh thu thực tế', 'error')
             return
         }
-        const luong_chuyen = calcLuongChuyen(xeConfig, doanh_thu)
-        const tam_ung      = Number(form.querySelector('[data-field="tam_ung"]').dataset.rawValue || form.querySelector('[data-field="tam_ung"]').value) || 0
-        const hoan_ung     = Number(form.querySelector('[data-field="hoan_ung"]').dataset.rawValue || form.querySelector('[data-field="hoan_ung"]').value) || 0
+        const luong_chuyen = luongChuyen || 0
         const btn = form.querySelector('.btn-success')
         btn.disabled = true
         showToast('Đang lấy vị trí GPS...')
@@ -1079,7 +1067,7 @@
         const { error } = await sb.from('trips').update({
             trang_thai: 'hoan_thanh',
             ngay_ket_thuc: new Date().toISOString(),
-            doanh_thu, luong_chuyen, tam_ung, hoan_ung,
+            doanh_thu, luong_chuyen,
             lat_ket_thuc: loc.lat, lng_ket_thuc: loc.lng
         }).eq('id', tripId)
         btn.disabled = false
@@ -1204,10 +1192,12 @@
             maintChiPhiInitialized = true
         }
         document.getElementById('maintenance-modal').style.display = 'flex'
+        document.body.classList.add('modal-open')
     }
 
     function closeMaintenanceModal() {
         document.getElementById('maintenance-modal').style.display = 'none'
+        document.body.classList.remove('modal-open')
         maintReceiptFile = null
     }
 
@@ -1301,7 +1291,15 @@
 
             const addr = document.createElement('span')
             addr.style.cssText = 'flex:1;font-size:0.9em'
-            addr.textContent = diem.dia_chi || ''
+            if (diem.lat && diem.lng) {
+                const link = document.createElement('a')
+                link.href = `https://www.google.com/maps?q=${diem.lat},${diem.lng}`
+                link.target = '_blank'
+                link.textContent = diem.dia_chi || ''
+                addr.appendChild(link)
+            } else {
+                addr.textContent = diem.dia_chi || ''
+            }
 
             row.append(badge, addr)
 
@@ -1342,10 +1340,12 @@
         document.getElementById('confirm-diem-preview').style.display = 'none'
         document.getElementById('confirm-diem-preview-img').src = ''
         document.getElementById('confirm-diem-modal').style.display = 'flex'
+        document.body.classList.add('modal-open')
     }
 
     function closeConfirmDiemModal() {
         document.getElementById('confirm-diem-modal').style.display = 'none'
+        document.body.classList.remove('modal-open')
         confirmDiemData = null
         confirmDiemPhoto = null
     }

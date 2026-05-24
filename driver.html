@@ -343,11 +343,13 @@
                 })
             }
             document.getElementById('advance-modal').style.display = 'flex'
+            document.body.classList.add('modal-open')
             amountInput.focus()
         }
 
         function closeAdvanceModal() {
             document.getElementById('advance-modal').style.display = 'none'
+            document.body.classList.remove('modal-open')
         }
 
         async function saveAdvance() {
@@ -379,6 +381,7 @@
             const body = document.getElementById('balance-modal-body')
             body.textContent = 'Đang tải...'
             document.getElementById('balance-modal').style.display = 'flex'
+            document.body.classList.add('modal-open')
 
             const { data: allDriverTrips } = await sb.from('trips')
                 .select('id, tuyen_duong')
@@ -522,6 +525,7 @@
 
         function closeBalanceModal() {
             document.getElementById('balance-modal').style.display = 'none'
+            document.body.classList.remove('modal-open')
         }
 
         async function openTripsModal(driverId, driverName, driverEmail, driverSdt, driverBienSo) {
@@ -590,6 +594,7 @@
             body.appendChild(deleteSection)
 
             document.getElementById('trips-modal').style.display = 'flex'
+            document.body.classList.add('modal-open')
 
             await renderTripsList(driverId)
         }
@@ -662,6 +667,7 @@
 
         function closeTripsModal() {
             document.getElementById('trips-modal').style.display = 'none'
+            document.body.classList.remove('modal-open')
         }
 
         async function logout() {

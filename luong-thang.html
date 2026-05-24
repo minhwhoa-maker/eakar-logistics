@@ -525,10 +525,12 @@
         setMoneyInput(document.getElementById('edit-khau-tru'), row.khau_tru)
         document.getElementById('edit-ghi-chu').value = row.ghi_chu || ''
         document.getElementById('edit-modal').style.display = 'flex'
+        document.body.classList.add('modal-open')
     }
 
     function closeEditModal() {
         document.getElementById('edit-modal').style.display = 'none'
+        document.body.classList.remove('modal-open')
         editingRowId = null
     }
 
