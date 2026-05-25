@@ -145,7 +145,8 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - Click biển số → modal đổi tài xế (kiểm tra tài xế đang lái xe khác); dùng `formatBienSo(s)` khi hiển thị và blur
 - `changeStatus(id, status, taiXeId)`: có tài xế → `hoat_dong ↔ bao_duong`; không tài xế → `tam_nghi ↔ bao_duong`
 - "📋 Chuyến" → modal query bằng `xe_id` (KHÔNG phải `tai_xe_id`) — lấy đúng chuyến của xe qua mọi tài xế
-- `nam_sx` tồn tại trong DB nhưng ẩn khỏi UI; `tai_xe_id` unique enforce ở app, không có DB constraint
+- `nam_sx` và `luong_co_ban` tồn tại trong DB nhưng ẩn khỏi UI; `tai_xe_id` unique enforce ở app, không có DB constraint
+- Bảng 7 cột: Biển số | Loại | Cách tính lương | Giá trị | Tài xế | Trạng thái | Hành động
 
 **Inline salary editing**
 - 2 cột: "Cách tính lương" (select `khoan_chuyen`/`phan_tram_doanh_thu`) + "Giá trị" (input, suffix `đ`/`%` theo mode)
@@ -169,13 +170,16 @@ Không có build step, không có test runner, không có lint. Quy trình:
 
 #### `luong-thang.html` — owner quản lý bảng lương tháng + PDF
 - Toggle `cho_phep_xem_luong` trên `users` (owner row) cho phép driver xem lương
-- `fetchLuongData(thangStr)` dùng chung cho render + PDF: select drivers, query xe, upsert `luong_thang` (auto-INSERT nếu chưa có, snapshot `luong_co_ban`, `ngay_lam=26`), query trips theo tháng
-- Bảng 13 cột: Tên | Biển số | Lương CB | Ngày làm | Σ chuyến | Phụ cấp | Thưởng | Σ tạm ứng | Σ hoàn ứng | Khấu trừ | THỰC LĨNH | Sửa | In phiếu
-- PDF: `buildPayslipHTML(luongRow, driver, xe, trips, thangStr)` → DOM element (width 595px, inline style); `printPayslip()` dùng `html2canvas` (scale 2) + `jspdf.jsPDF`; `printAllPayslips()` tạo 1 PDF nhiều trang
+- `fetchLuongData(thangStr)` dùng chung cho render + PDF: select drivers, query xe (`.select('id, bien_so')`), upsert `luong_thang` (auto-INSERT nếu chưa có, `luong_co_ban_snapshot: 0`, `ap_dung_luong_co_ban: false`), query trips theo tháng
+- Bảng 12 cột: Tên | Biển số | Lương CB | Σ chuyến | Phụ cấp | Thưởng | Σ tạm ứng | Σ hoàn ứng | Khấu trừ | THỰC LĨNH | Sửa | In phiếu
+- Lương CB: hiện `formatMoney(luong_co_ban_snapshot)` khi `ap_dung_luong_co_ban=true`, còn lại hiện `'—'`
+- Công thức: `luong_cb_apply = ap_dung_luong_co_ban ? luong_co_ban_snapshot : 0`; `thuc_linh = luong_cb_apply + tong_luong_chuyen + phu_cap + thuong - tong_tam_ung + tong_hoan_ung - khau_tru`
+- THỰC LĨNH highlight: `idx === 9` trong cellValues (0-indexed)
+- PDF: `buildPayslipHTML(luongRow, driver, xe, trips, thangStr)` → DOM element (width 595px, inline style); `printPayslip()` dùng `html2canvas` (scale 2) + `jspdf.jsPDF`; `printAllPayslips()` tạo 1 PDF nhiều trang; dòng "Lương cơ bản" chỉ xuất hiện trong PDF khi `ap_dung_luong_co_ban=true`
 - Nút "🖨️ In tất cả" ở header desktop + hamburger menu (`menu-print-all`)
 - CDN: `jspdf@2.5.1` (UMD) → global `jspdf.jsPDF`; `html2canvas@1.4.1` → global `html2canvas`
 - Local helper `slugify()`: `.replace(/đ/g,'d').replace(/Đ/g,'d').normalize('NFD').replace(/[̀-ͯ]/g,'')...`
-- Edit modal cập nhật `ngay_lam, phu_cap, thuong, khau_tru, ghi_chu`. `ownerProfileId` = `auth.profile.id`
+- Edit modal cập nhật `ap_dung_luong_co_ban` (`.notify-row` toggle `#edit-ap-dung-cb`), `luong_co_ban_snapshot` (`#edit-luong-cb`), `phu_cap`, `thuong`, `khau_tru`, `ghi_chu`. `ownerProfileId` = `auth.profile.id`
 
 ---
 
@@ -191,7 +195,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 #### `sw.js` + `manifest.json` — PWA
 - Chỉ register từ `bai10.html`
 - STATIC_ASSETS: `bai10.html`, `style.css`, `manifest.json`, icons — **`shared.js` và tất cả admin pages không được pre-cache**, chỉ dynamic-cache khi navigate tới
-- Khi deploy thay đổi cho bất kỳ file nào trong STATIC_ASSETS, phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v23`) để invalidate cache cũ
+- Khi deploy thay đổi cho bất kỳ file nào trong STATIC_ASSETS, phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v24`) để invalidate cache cũ
 - Push handler + notificationclick handler (focus tab cũ hoặc mở tab mới tới URL trong `notification.data.url`)
 
 ---
@@ -348,7 +352,7 @@ xe             (id, owner_id, bien_so, loai_xe, nam_sx, trang_thai, tai_xe_id, l
                 -- trang_thai: 'hoat_dong' | 'bao_duong' | 'tam_nghi'
                 -- nam_sx: tồn tại trong DB nhưng ẩn khỏi UI vehicles.html
                 -- tai_xe_id: không có UNIQUE constraint trong DB, app tự enforce
-                -- luong_co_ban: lương cơ bản tháng (VNĐ), snapshot vào luong_thang khi tạo row
+                -- luong_co_ban: tồn tại trong DB nhưng ẩn khỏi UI vehicles.html (không còn dùng trong INSERT/UPDATE); owner nhập lương cơ bản trực tiếp qua luong_thang.luong_co_ban_snapshot
                 -- cach_tinh_luong: 'khoan_chuyen' | 'phan_tram_doanh_thu' (default 'khoan_chuyen')
                 -- gia_tri_luong: nếu khoan_chuyen → số VNĐ cố định; nếu phan_tram_doanh_thu → % (0–100)
 bao_duong      (id, owner_id, xe_id, ngay, loai, mo_ta, chi_phi, created_at,
@@ -365,11 +369,14 @@ bao_duong      (id, owner_id, xe_id, ngay, loai, mo_ta, chi_phi, created_at,
                 -- trip_id: nullable uuid FK → trips(id); chuyến đang chạy lúc báo (nếu có)
                 -- anh_realtime: true=camera realtime, null=không xác định/không có ảnh
 luong_thang    (id, owner_id, tai_xe_id, thang text, luong_co_ban_snapshot int, ngay_lam int default 26,
+                ap_dung_luong_co_ban bool DEFAULT false,
                 phu_cap int, thuong int, khau_tru int, ghi_chu text, created_at, updated_at)
                 -- thang format: 'YYYY-MM'; UNIQUE(tai_xe_id, thang)
                 -- FK owner_id → public.users(id) ON DELETE CASCADE
                 -- FK tai_xe_id → public.users(id) ON DELETE CASCADE
-                -- thuc_linh = round(luong_co_ban_snapshot/26*ngay_lam) + Σluong_chuyen + phu_cap + thuong - Σtam_ung + Σhoan_ung - khau_tru
+                -- ngay_lam: còn trong DB nhưng không còn dùng trong UI/công thức (bỏ từ session lương v2)
+                -- ap_dung_luong_co_ban: toggle có tính lương cơ bản vào thực lĩnh không
+                -- thuc_linh = (ap_dung_luong_co_ban ? luong_co_ban_snapshot : 0) + Σluong_chuyen + phu_cap + thuong - Σtam_ung + Σhoan_ung - khau_tru
                 -- Σluong_chuyen/tam_ung/hoan_ung query LIVE từ trips (trang_thai='hoan_thanh', ngay_ket_thuc trong tháng)
 bang_luong_km  (id, owner_id, loai_xe text NOT NULL, km_tu int, km_den int, so_tien int)
                 -- loai_xe: khớp với xe.loai_xe; owner define bảng lương km theo loại xe
@@ -411,6 +418,9 @@ notify_settings    (user_id uuid PK, notify_new_trip bool, notify_complete bool,
   );
   ALTER TABLE diem_hanh_trinh ADD COLUMN IF NOT EXISTS anh_url text;
   ALTER TABLE diem_hanh_trinh ADD COLUMN IF NOT EXISTS anh_realtime bool;
+
+  -- luong_thang: thêm toggle lương cơ bản (bỏ công thức ngày công)
+  ALTER TABLE luong_thang ADD COLUMN IF NOT EXISTS ap_dung_luong_co_ban bool DEFAULT false;
   ```
 
 ## Storage
