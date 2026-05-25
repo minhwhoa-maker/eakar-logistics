@@ -13,15 +13,21 @@
 </head>
 <body>
     <div class="header">
-        <button class="hamburger-btn" id="hamburger-btn">☰</button>
-        <h2>💵 <span class="header-text">Tiền lương</span></h2>
-        <div style="display:flex; gap:10px; align-items:center;">
-            <button id="btn-notify" class="btn" onclick="toggleNotifyPanel()">🔔</button>
-            <div class="header-nav-desktop" style="display:flex;gap:10px">
+        <div style="display:flex; align-items:center; gap:8px;">
+            <button class="hamburger-btn" id="hamburger-btn">☰</button>
+            <div class="header-nav-desktop" style="display:flex; gap:8px;">
                 <button class="btn" onclick="window.location.href='owner-dashboard.html'">← Trang chủ</button>
+            </div>
+        </div>
+        <h2 style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);">💵 <span class="header-text">Tiền lương</span></h2>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <div class="header-nav-desktop" style="display:flex; gap:8px;">
                 <button class="btn" onclick="window.location.href='driver.html'">👥 Tài xế</button>
                 <button class="btn" onclick="window.location.href='vehicles.html'">🚛 Xe</button>
                 <button class="btn btn-purple" onclick="printAllPayslips()">🖨️ In tất cả</button>
+            </div>
+            <button id="btn-notify" class="btn" onclick="toggleNotifyPanel()">🔔</button>
+            <div class="header-nav-desktop" style="display:flex; gap:8px;">
                 <button class="btn btn-logout" onclick="logout()">Đăng xuất</button>
             </div>
         </div>
