@@ -176,7 +176,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - Công thức: `luong_cb_apply = ap_dung_luong_co_ban ? luong_co_ban_snapshot : 0`; `thuc_linh = luong_cb_apply + tong_luong_chuyen + phu_cap + thuong - tong_tam_ung + tong_hoan_ung - khau_tru`
 - THỰC LĨNH highlight: `idx === 9` trong cellValues (0-indexed)
 - PDF: `buildPayslipHTML(luongRow, driver, xe, trips, thangStr)` → DOM element (width 595px, inline style); `printPayslip()` dùng `html2canvas` (scale 2) + `jspdf.jsPDF`; `printAllPayslips()` tạo 1 PDF nhiều trang; dòng "Lương cơ bản" chỉ xuất hiện trong PDF khi `ap_dung_luong_co_ban=true`
-- Nút "🖨️ In tất cả" ở header desktop + hamburger menu (`menu-print-all`)
+- Nút "🖨️ In tất cả" ở filter bar + hamburger menu (`menu-print-all`); header không còn nút này
 - CDN: `jspdf@2.5.1` (UMD) → global `jspdf.jsPDF`; `html2canvas@1.4.1` → global `html2canvas`
 - Local helper `slugify()`: `.replace(/đ/g,'d').replace(/Đ/g,'d').normalize('NFD').replace(/[̀-ͯ]/g,'')...`
 - Edit modal cập nhật `ap_dung_luong_co_ban` (`.notify-row` toggle `#edit-ap-dung-cb`), `luong_co_ban_snapshot` (`#edit-luong-cb`), `phu_cap`, `thuong`, `khau_tru`, `ghi_chu`. `ownerProfileId` = `auth.profile.id`

@@ -21,11 +21,6 @@
         </div>
         <h2 style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);">💵 <span class="header-text">Tiền lương</span></h2>
         <div style="display:flex; align-items:center; gap:8px;">
-            <div class="header-nav-desktop" style="display:flex; gap:8px;">
-                <button class="btn" onclick="window.location.href='driver.html'">👥 Tài xế</button>
-                <button class="btn" onclick="window.location.href='vehicles.html'">🚛 Xe</button>
-                <button class="btn btn-purple" onclick="printAllPayslips()">🖨️ In tất cả</button>
-            </div>
             <button id="btn-notify" class="btn" onclick="toggleNotifyPanel()">🔔</button>
             <div class="header-nav-desktop" style="display:flex; gap:8px;">
                 <button class="btn btn-logout" onclick="logout()">Đăng xuất</button>
@@ -34,8 +29,6 @@
     </div>
     <div class="hamburger-menu" id="hamburger-menu">
         <a href="owner-dashboard.html">← Trang chủ</a>
-        <a href="driver.html">👥 Tài xế</a>
-        <a href="vehicles.html">🚛 Xe</a>
         <button id="menu-print-all">🖨️ In tất cả phiếu</button>
         <div class="menu-divider"></div>
         <button class="menu-logout" id="menu-logout">🚪 Đăng xuất</button>
@@ -86,6 +79,7 @@
                 <label>Tháng</label>
                 <input type="month" id="filter-month">
                 <button class="btn" onclick="loadLuong()">Xem</button>
+                <button class="btn btn-purple" onclick="printAllPayslips()">🖨️ In tất cả</button>
             </div>
             <div class="table-scroll wide">
                 <table>

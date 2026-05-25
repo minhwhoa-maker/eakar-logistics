@@ -20,9 +20,6 @@
         </div>
         <h2 style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);">👥 <span class="header-text">Tài xế</span></h2>
         <div style="display:flex; align-items:center; gap:8px;">
-            <div class="header-nav-desktop" style="display:flex; gap:8px;">
-                <button class="btn btn-success" onclick="exportExcel()">📊 Excel</button>
-            </div>
             <button id="btn-notify" class="btn" onclick="toggleNotifyPanel()">🔔</button>
             <div class="header-nav-desktop" style="display:flex; gap:8px;">
                 <button class="btn btn-logout" onclick="logout()">Đăng xuất</button>
@@ -81,7 +78,10 @@
             <p id="add-msg" style="display:none; color:#27ae60; font-weight:bold"></p>
         </div>
         <div class="card">
-            <h3>Danh sách tài xế</h3>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h3 style="margin:0">Danh sách tài xế</h3>
+                <button class="btn btn-success btn-sm" onclick="exportExcel()">📊 Xuất Excel</button>
+            </div>
             <div class="table-scroll wide">
                 <table>
                     <thead>
