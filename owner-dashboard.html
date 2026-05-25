@@ -979,6 +979,13 @@
                 <input type="text" id="nt-tuyen-duong" placeholder="VD: Đắk Lắk - Sài Gòn" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:#1a1a2e;box-sizing:border-box">
             </div>
 
+            <div id="nt-co-dinh-block" style="display:none;margin-bottom:12px">
+                <div>
+                    <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Lương trả theo chuyến cố định (đ)</label>
+                    <input type="text" id="nt-tien-chuyen" placeholder="0" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:#1a1a2e;box-sizing:border-box">
+                </div>
+            </div>
+
             <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
                 <div style="flex:1;min-width:200px">
                     <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Xe</label>
@@ -1001,13 +1008,6 @@
                 <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:6px">🏁 Điểm giao hàng</label>
                 <div id="nt-giao-list"></div>
                 <button class="btn btn-gray" style="margin-top:6px;font-size:13px;padding:6px 12px" onclick="addDiemGiao()">+ Điểm giao</button>
-            </div>
-
-            <div id="nt-co-dinh-block" style="display:none;margin-bottom:12px">
-                <div>
-                    <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Tiền chuyến cố định (đ)</label>
-                    <input type="text" id="nt-tien-chuyen" placeholder="0" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:#1a1a2e;box-sizing:border-box">
-                </div>
             </div>
 
             <div style="display:flex;gap:10px;justify-content:flex-end">
