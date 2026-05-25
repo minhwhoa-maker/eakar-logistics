@@ -54,7 +54,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 **Tạo chuyến** (`#new-trip-modal`)
 - 2 mode qua tab buttons (`tab-co-dinh`/`tab-theo-km`) + hidden `#nt-loai-luong`; `setTripTab(mode)` toggle UI
 - `#nt-tuyen-duong` luôn hiện (tên tuyến cho `co_dinh`; bị bỏ qua ở `theo_km`)
-- `#nt-co-dinh-block` (ẩn khi `theo_km`) chứa `#nt-tien-chuyen` dùng `addDotFormat`
+- `#nt-co-dinh-block` (ẩn khi `theo_km`) chứa label "Lương trả theo chuyến cố định (đ)" + `#nt-tien-chuyen` dùng `addDotFormat`; nằm ngay sau div Tuyến đường và trước div flex Xe+Tài xế trong modal DOM
 - Mode `theo_km`: gọi `POST /api/maps`, lookup `bang_luong_km` → `luong_chuyen`. Query: `.eq('loai_xe', xe.loai_xe).lte('km_tu', km).or('km_den.gte.'+km+',km_den.is.null').limit(1)` — dùng `.limit(1)` (KHÔNG `.maybeSingle()`), access `rateRows[0]`
 - Mode `co_dinh`: `luong_chuyen = tien_co_dinh`, skip Maps API
 - `buildDiemRow(containerId)`: input địa chỉ + hidden lat/lng + nút GPS + nút xóa; `parseMapsUrl()` detect Google Maps URL (pattern `/@lat,lng` hoặc `?query=lat,lng`) → auto-fill lat/lng + tô xanh; gõ text thường thì clear lat/lng
@@ -180,6 +180,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - CDN: `jspdf@2.5.1` (UMD) → global `jspdf.jsPDF`; `html2canvas@1.4.1` → global `html2canvas`
 - Local helper `slugify()`: `.replace(/đ/g,'d').replace(/Đ/g,'d').normalize('NFD').replace(/[̀-ͯ]/g,'')...`
 - Edit modal cập nhật `ap_dung_luong_co_ban` (`.notify-row` toggle `#edit-ap-dung-cb`), `luong_co_ban_snapshot` (`#edit-luong-cb`), `phu_cap`, `thuong`, `khau_tru`, `ghi_chu`. `ownerProfileId` = `auth.profile.id`
+- `#edit-luong-cb` nằm trong `#edit-luong-cb-group`: ẩn khi toggle OFF, hiện khi ON — `toggleLuongCbVisibility()` được gọi cả khi `onchange` và khi `openEditModal()` sau khi set `.checked`
 
 ---
 
