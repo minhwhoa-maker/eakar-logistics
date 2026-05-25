@@ -88,7 +88,6 @@
                             <th>Tên tài xế</th>
                             <th>Biển số xe</th>
                             <th>Lương CB</th>
-                            <th>Ngày làm</th>
                             <th>Σ chuyến</th>
                             <th>Phụ cấp</th>
                             <th>Thưởng</th>
@@ -101,7 +100,7 @@
                         </tr>
                     </thead>
                     <tbody id="luong-body">
-                        <tr><td colspan="13" style="text-align:center;color:var(--text-muted);padding:16px">Chọn tháng để xem</td></tr>
+                        <tr><td colspan="12" style="text-align:center;color:var(--text-muted);padding:16px">Chọn tháng để xem</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -111,9 +110,16 @@
     <div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
         <div style="background:var(--white);border-radius:var(--radius);padding:24px;width:380px;max-width:95%;max-height:90vh;overflow-y:auto;">
             <h3 style="margin:0 0 16px" id="edit-modal-title">Chỉnh lương</h3>
+            <div class="notify-row">
+                <span>Áp dụng lương cơ bản</span>
+                <label class="toggle">
+                    <input type="checkbox" id="edit-ap-dung-cb">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
             <div class="form-group">
-                <label>Ngày làm (0–31)</label>
-                <input type="number" id="edit-ngay-lam" min="0" max="31">
+                <label>Lương cơ bản (đ)</label>
+                <input type="text" id="edit-luong-cb">
             </div>
             <div class="form-group">
                 <label>Phụ cấp (đ)</label>
@@ -218,7 +224,7 @@
         if (!drivers || drivers.length === 0) return { drivers: [], xeResults: [], luongMap: {}, tripResults: [] }
 
         const xeResults = await Promise.all(
-            drivers.map(d => sb.from('xe').select('id, bien_so, luong_co_ban').eq('tai_xe_id', d.id).maybeSingle())
+            drivers.map(d => sb.from('xe').select('id, bien_so').eq('tai_xe_id', d.id).maybeSingle())
         )
 
         const { data: luongRows, error: ltErr } = await sb.from('luong_thang')
@@ -239,8 +245,8 @@
                         owner_id: ownerProfileId,
                         tai_xe_id: d.id,
                         thang: thangStr,
-                        luong_co_ban_snapshot: xe?.luong_co_ban || 0,
-                        ngay_lam: 26,
+                        luong_co_ban_snapshot: 0,
+                        ap_dung_luong_co_ban: false,
                         phu_cap: 0,
                         thuong: 0,
                         khau_tru: 0
@@ -276,7 +282,7 @@
         if (!thangStr) { showToast('Vui lòng chọn tháng', 'error'); return }
 
         const tbody = document.getElementById('luong-body')
-        tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--text-muted);padding:16px">Đang tải...</td></tr>'
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--text-muted);padding:16px">Đang tải...</td></tr>'
 
         const result = await fetchLuongData(thangStr)
         if (!result) return
@@ -284,7 +290,7 @@
         const { drivers, xeResults, luongMap, tripResults } = result
 
         if (drivers.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--text-muted);padding:16px">Chưa có tài xế nào</td></tr>'
+            tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--text-muted);padding:16px">Chưa có tài xế nào</td></tr>'
             return
         }
 
@@ -299,19 +305,18 @@
             const tong_hoan_ung = trips.reduce((s, t) => s + (Number(t.hoan_ung) || 0), 0)
 
             const luong_cb = luongRow?.luong_co_ban_snapshot || 0
-            const ngay_lam = luongRow?.ngay_lam ?? 26
+            const luong_cb_apply = luongRow?.ap_dung_luong_co_ban ? (luongRow?.luong_co_ban_snapshot || 0) : 0
             const phu_cap = luongRow?.phu_cap || 0
             const thuong = luongRow?.thuong || 0
             const khau_tru = luongRow?.khau_tru || 0
 
-            const thuc_linh = Math.round(luong_cb / 26 * ngay_lam) + tong_luong_chuyen + phu_cap + thuong - tong_tam_ung + tong_hoan_ung - khau_tru
+            const thuc_linh = luong_cb_apply + tong_luong_chuyen + phu_cap + thuong - tong_tam_ung + tong_hoan_ung - khau_tru
 
             const tr = document.createElement('tr')
             const cellValues = [
                 d.full_name || '-',
                 xe ? formatBienSo(xe.bien_so) : '—',
-                formatMoney(luong_cb),
-                String(ngay_lam),
+                luongRow?.ap_dung_luong_co_ban ? formatMoney(luong_cb) : '—',
                 formatMoney(tong_luong_chuyen),
                 formatMoney(phu_cap),
                 formatMoney(thuong),
@@ -324,7 +329,7 @@
             cellValues.forEach((val, idx) => {
                 const td = document.createElement('td')
                 td.textContent = val
-                if (idx === 10) {
+                if (idx === 9) {
                     td.style.fontWeight = '700'
                     td.style.color = thuc_linh >= 0 ? 'var(--success)' : 'var(--danger)'
                 }
@@ -360,13 +365,12 @@
         const tong_hoan_ung = trips.reduce((s, t) => s + (Number(t.hoan_ung) || 0), 0)
 
         const luong_cb = luongRow?.luong_co_ban_snapshot || 0
-        const ngay_lam = luongRow?.ngay_lam ?? 26
+        const luong_cb_apply = luongRow?.ap_dung_luong_co_ban ? (luongRow?.luong_co_ban_snapshot || 0) : 0
         const phu_cap = luongRow?.phu_cap || 0
         const thuong = luongRow?.thuong || 0
         const khau_tru = luongRow?.khau_tru || 0
 
-        const luong_cb_ngay = Math.round(luong_cb / 26 * ngay_lam)
-        const thuc_linh = luong_cb_ngay + tong_luong_chuyen + phu_cap + thuong - tong_tam_ung + tong_hoan_ung - khau_tru
+        const thuc_linh = luong_cb_apply + tong_luong_chuyen + phu_cap + thuong - tong_tam_ung + tong_hoan_ung - khau_tru
 
         const now = new Date(Date.now() + 7 * 60 * 60 * 1000)
         const dd = String(now.getUTCDate()).padStart(2, '0')
@@ -402,7 +406,7 @@
         table.style.cssText = 'width:100%;border-collapse:collapse;'
 
         const detailRows = [
-            [`Lương cơ bản (${ngay_lam}/26 ngày)`, formatMoney(luong_cb_ngay), ''],
+            ...(luongRow?.ap_dung_luong_co_ban ? [['Lương cơ bản', formatMoney(luong_cb), '']] : []),
             [`Lương chuyến (${trips.length} chuyến)`, formatMoney(tong_luong_chuyen), ''],
             ['Phụ cấp', formatMoney(phu_cap), ''],
             ['Thưởng', formatMoney(thuong), ''],
@@ -519,7 +523,8 @@
         if (!row) { showToast('Không tìm thấy dữ liệu lương', 'error'); return }
         editingRowId = row.id
         document.getElementById('edit-modal-title').textContent = 'Chỉnh lương: ' + (driverName || '')
-        document.getElementById('edit-ngay-lam').value = row.ngay_lam ?? 26
+        document.getElementById('edit-ap-dung-cb').checked = row.ap_dung_luong_co_ban === true
+        setMoneyInput(document.getElementById('edit-luong-cb'), row.luong_co_ban_snapshot)
         setMoneyInput(document.getElementById('edit-phu-cap'), row.phu_cap)
         setMoneyInput(document.getElementById('edit-thuong'), row.thuong)
         setMoneyInput(document.getElementById('edit-khau-tru'), row.khau_tru)
@@ -536,14 +541,15 @@
 
     async function saveEdit() {
         if (!editingRowId) return
-        const ngay_lam = Math.max(0, Math.min(31, Number(document.getElementById('edit-ngay-lam').value) || 0))
         const phu_cap = readMoneyInput(document.getElementById('edit-phu-cap'))
         const thuong = readMoneyInput(document.getElementById('edit-thuong'))
         const khau_tru = readMoneyInput(document.getElementById('edit-khau-tru'))
         const ghi_chu = document.getElementById('edit-ghi-chu').value.trim() || null
+        const ap_dung_luong_co_ban = document.getElementById('edit-ap-dung-cb').checked
+        const luong_co_ban_snapshot = readMoneyInput(document.getElementById('edit-luong-cb'))
 
         const { error } = await sb.from('luong_thang')
-            .update({ ngay_lam, phu_cap, thuong, khau_tru, ghi_chu })
+            .update({ phu_cap, thuong, khau_tru, ghi_chu, ap_dung_luong_co_ban, luong_co_ban_snapshot })
             .eq('id', editingRowId)
         if (error) { showToast('Lỗi: ' + error.message, 'error'); return }
         closeEditModal()
@@ -620,6 +626,7 @@
         addDotFormat(document.getElementById('edit-phu-cap'))
         addDotFormat(document.getElementById('edit-thuong'))
         addDotFormat(document.getElementById('edit-khau-tru'))
+        addDotFormat(document.getElementById('edit-luong-cb'))
 
         await loadXemLuongToggle()
         document.getElementById('filter-month').value = getVNMonth()

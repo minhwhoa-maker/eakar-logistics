@@ -137,16 +137,12 @@
         body.textContent = ''
 
         const luong_cb = row.luong_co_ban_snapshot || 0
-        const ngay_lam = row.ngay_lam ?? 26
-        const luong_cung = Math.round(luong_cb / 26 * ngay_lam)
 
         const table = document.createElement('table')
         table.style.width = '100%'
 
         const items = [
-            ['Lương cơ bản (snapshot)', formatMoney(luong_cb)],
-            ['Ngày làm', ngay_lam + ' / 26'],
-            ['Lương cứng', formatMoney(luong_cung)],
+            ...(row.ap_dung_luong_co_ban ? [['Lương cơ bản', formatMoney(luong_cb)]] : []),
             ['Tổng lương chuyến', formatMoney(tong_luong_chuyen)],
             ['Phụ cấp', formatMoney(row.phu_cap || 0)],
             ['Thưởng', formatMoney(row.thuong || 0)],
@@ -237,12 +233,12 @@
             const tong_hoan_ung = trips.reduce((s, t) => s + (Number(t.hoan_ung) || 0), 0)
 
             const luong_cb = row.luong_co_ban_snapshot || 0
-            const ngay_lam = row.ngay_lam ?? 26
+            const luong_cb_apply = row.ap_dung_luong_co_ban ? (row.luong_co_ban_snapshot || 0) : 0
             const phu_cap = row.phu_cap || 0
             const thuong = row.thuong || 0
             const khau_tru = row.khau_tru || 0
 
-            const thuc_linh = Math.round(luong_cb / 26 * ngay_lam) + tong_luong_chuyen + phu_cap + thuong - tong_tam_ung + tong_hoan_ung - khau_tru
+            const thuc_linh = luong_cb_apply + tong_luong_chuyen + phu_cap + thuong - tong_tam_ung + tong_hoan_ung - khau_tru
 
             const card = document.createElement('div')
             card.className = 'card'
@@ -268,7 +264,7 @@
 
             const sub = document.createElement('div')
             sub.style.cssText = 'font-size:0.85em;color:var(--text-muted);margin-top:4px'
-            sub.textContent = 'Lương CB: ' + formatMoney(luong_cb) + ' · Chuyến: ' + formatMoney(tong_luong_chuyen)
+            sub.textContent = (row.ap_dung_luong_co_ban ? 'Lương CB: ' + formatMoney(luong_cb) + ' · ' : '') + 'Chuyến: ' + formatMoney(tong_luong_chuyen)
 
             card.append(header, thucLinhEl, sub)
             container.appendChild(card)

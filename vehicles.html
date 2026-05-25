@@ -65,7 +65,6 @@
             <div class="form-row">
                 <input type="text" id="new-bien-so" placeholder="Biển số">
                 <select id="new-loai"></select>
-                <input type="text" id="new-luong-co-ban" placeholder="Lương cơ bản (VNĐ/tháng)">
                 <select id="new-tai-xe">
                     <option value="">-- Chọn tài xế --</option>
                 </select>
@@ -90,7 +89,6 @@
                         <tr>
                             <th>Biển số</th>
                             <th>Loại</th>
-                            <th>Lương cơ bản</th>
                             <th>Cách tính lương</th>
                             <th>Giá trị</th>
                             <th>Tài xế</th>
@@ -99,7 +97,7 @@
                         </tr>
                     </thead>
                     <tbody id="vehicle-list">
-                        <tr><td colspan="6">Đang tải ...</td></tr>
+                        <tr><td colspan="7">Đang tải ...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -261,7 +259,7 @@
             tbody.textContent = ''
             const row = document.createElement('tr')
             const cell = document.createElement('td')
-            cell.colSpan = 8
+            cell.colSpan = 7
             cell.textContent = message
             row.appendChild(cell)
             tbody.appendChild(row)
@@ -297,8 +295,6 @@
             const bien_so = document.getElementById('new-bien-so').value.trim()
             const loai_xe = document.getElementById('new-loai').value.trim()
             const tai_xe_id = document.getElementById('new-tai-xe').value || null
-            const luongEl = document.getElementById('new-luong-co-ban')
-            const luong_co_ban = Number(luongEl.dataset.rawValue || luongEl.value.replace(/\./g, '')) || 0
             const cach_tinh_luong = document.getElementById('new-cach-tinh-luong').value || 'khoan_chuyen'
             const giaTriEl = document.getElementById('new-gia-tri-luong')
             const gia_tri_luong = Number(giaTriEl.dataset.rawValue || giaTriEl.value.replace(/\./g, '')) || 0
@@ -336,7 +332,6 @@
                 loai_xe,
                 tai_xe_id,
                 trang_thai: tai_xe_id ? 'hoat_dong' : 'tam_nghi',
-                luong_co_ban,
                 cach_tinh_luong,
                 gia_tri_luong
             })
@@ -345,9 +340,6 @@
             else {
                 document.getElementById('new-bien-so').value = ''
                 document.getElementById('new-loai').value = ''
-                const luongInput = document.getElementById('new-luong-co-ban')
-                luongInput.value = ''
-                luongInput.dataset.rawValue = ''
                 document.getElementById('new-tai-xe').value = ''
                 document.getElementById('new-cach-tinh-luong').value = 'khoan_chuyen'
                 const giaTriResetEl = document.getElementById('new-gia-tri-luong')
@@ -444,7 +436,6 @@
                     row.appendChild(plateCell)
 
                     addCell(row, LOAI_XE_OPTIONS.find(o => o.value === v.loai_xe)?.label ?? v.loai_xe ?? '-')
-                    addCell(row, formatMoney(v.luong_co_ban || 0))
 
                     // Cách tính lương
                     const luongTypeCell = document.createElement('td')
@@ -1041,7 +1032,6 @@
                 const formatted = formatBienSo(input.value.trim())
                 if (formatted) input.value = formatted
             })
-            addDotFormat(document.getElementById('new-luong-co-ban'))
             addDotFormat(document.getElementById('new-gia-tri-luong'))
             addDotFormat(document.getElementById('km-so-tien'))
             document.getElementById('new-cach-tinh-luong').addEventListener('change', () => {
