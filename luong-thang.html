@@ -113,11 +113,11 @@
             <div class="notify-row">
                 <span>Áp dụng lương cơ bản</span>
                 <label class="toggle">
-                    <input type="checkbox" id="edit-ap-dung-cb">
+                    <input type="checkbox" id="edit-ap-dung-cb" onchange="toggleLuongCbVisibility()">
                     <span class="toggle-slider"></span>
                 </label>
             </div>
-            <div class="form-group">
+            <div class="form-group" id="edit-luong-cb-group">
                 <label>Lương cơ bản (đ)</label>
                 <input type="text" id="edit-luong-cb">
             </div>
@@ -519,11 +519,17 @@
         }
     }
 
+    function toggleLuongCbVisibility() {
+        const checked = document.getElementById('edit-ap-dung-cb').checked
+        document.getElementById('edit-luong-cb-group').style.display = checked ? 'block' : 'none'
+    }
+
     function openEditModal(row, driverName) {
         if (!row) { showToast('Không tìm thấy dữ liệu lương', 'error'); return }
         editingRowId = row.id
         document.getElementById('edit-modal-title').textContent = 'Chỉnh lương: ' + (driverName || '')
         document.getElementById('edit-ap-dung-cb').checked = row.ap_dung_luong_co_ban === true
+        toggleLuongCbVisibility()
         setMoneyInput(document.getElementById('edit-luong-cb'), row.luong_co_ban_snapshot)
         setMoneyInput(document.getElementById('edit-phu-cap'), row.phu_cap)
         setMoneyInput(document.getElementById('edit-thuong'), row.thuong)
