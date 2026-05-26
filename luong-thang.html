@@ -75,10 +75,12 @@
             </div>
         </div>
         <div class="card">
-            <div class="filter-bar">
-                <label>Tháng</label>
-                <input type="month" id="filter-month">
-                <button class="btn" onclick="loadLuong()">Xem</button>
+            <div class="filter-bar" style="justify-content:space-between;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <label>Tháng</label>
+                    <input type="month" id="filter-month">
+                    <button class="btn" onclick="loadLuong()">Xem</button>
+                </div>
                 <button class="btn btn-purple" onclick="printAllPayslips()">🖨️ In tất cả</button>
             </div>
             <div class="table-scroll wide">
