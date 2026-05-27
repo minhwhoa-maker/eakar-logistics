@@ -65,7 +65,7 @@
         </div>
     </div>
     <div class="container">
-        <div class="card">
+        <div class="card" id="xem-luong-card">
             <div class="notify-row">
                 <span>Cho phép tài xế xem lương</span>
                 <label class="toggle">
@@ -97,7 +97,7 @@
                             <th>Σ hoàn ứng</th>
                             <th>Khấu trừ</th>
                             <th>THỰC LĨNH</th>
-                            <th>Sửa</th>
+                            <th id="th-sua">Sửa</th>
                             <th>In phiếu</th>
                         </tr>
                     </thead>
@@ -190,6 +190,8 @@
 
     const sb = createSb()
     let ownerProfileId = null
+    let currentRole = null
+    let currentUserId = null
     let editingRowId = null
 
     function getVNMonth() {
@@ -338,13 +340,15 @@
                 tr.appendChild(td)
             })
 
-            const editTd = document.createElement('td')
-            const editBtn = document.createElement('button')
-            editBtn.className = 'btn btn-sm btn-warning'
-            editBtn.textContent = 'Sửa'
-            editBtn.addEventListener('click', () => openEditModal(luongRow, d.full_name))
-            editTd.appendChild(editBtn)
-            tr.appendChild(editTd)
+            if (currentRole !== 'supervisor') {
+                const editTd = document.createElement('td')
+                const editBtn = document.createElement('button')
+                editBtn.className = 'btn btn-sm btn-warning'
+                editBtn.textContent = 'Sửa'
+                editBtn.addEventListener('click', () => openEditModal(luongRow, d.full_name))
+                editTd.appendChild(editBtn)
+                tr.appendChild(editTd)
+            }
 
             const printTd = document.createElement('td')
             const printBtn = document.createElement('button')
@@ -605,7 +609,7 @@
         const { data } = await sb
             .from('notify_settings')
             .select('notify_new_trip, notify_complete, notify_expense, notify_maintenance')
-            .eq('user_id', ownerProfileId)
+            .eq('user_id', currentUserId)
             .maybeSingle()
         document.getElementById('notif-new-trip').checked    = data ? data.notify_new_trip    : true
         document.getElementById('notif-complete').checked     = data ? data.notify_complete     : true
@@ -614,9 +618,8 @@
     }
 
     async function saveNotifySetting(key, value) {
-        console.log('saveNotifySetting', key, value, ownerProfileId)
         await sb.from('notify_settings')
-            .upsert({ user_id: ownerProfileId, [key]: value }, { onConflict: 'user_id' })
+            .upsert({ user_id: currentUserId, [key]: value }, { onConflict: 'user_id' })
     }
 
     function toggleNotifyPanel() {
@@ -624,18 +627,28 @@
         p.style.display = p.style.display === 'none' ? 'block' : 'none'
     }
 
+    function applyReadOnlyForSupervisor() {
+        if (currentRole !== 'supervisor') return
+        document.getElementById('xem-luong-card').style.display = 'none'
+        document.getElementById('th-sua').style.display = 'none'
+    }
+
     async function initPage() {
-        const auth = await requireRole(sb, 'owner')
+        const auth = await requireRole(sb, ['owner', 'supervisor'])
         if (!auth) return
-        ownerProfileId = auth.profile.id
+        currentRole = auth.profile.role
+        currentUserId = auth.profile.id
+        const effectiveOwnerId = currentRole === 'supervisor' ? auth.profile.owner_id : auth.profile.id
+        ownerProfileId = effectiveOwnerId
         loadNotifySettings()
-        setupPushNotifications(ownerProfileId)
+        setupPushNotifications(currentUserId)
 
         addDotFormat(document.getElementById('edit-phu-cap'))
         addDotFormat(document.getElementById('edit-thuong'))
         addDotFormat(document.getElementById('edit-khau-tru'))
         addDotFormat(document.getElementById('edit-luong-cb'))
 
+        applyReadOnlyForSupervisor()
         await loadXemLuongToggle()
         document.getElementById('filter-month').value = getVNMonth()
         await loadLuong()

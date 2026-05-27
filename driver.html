@@ -65,7 +65,7 @@
         </div>
     </div>
     <div class="container">
-        <div class="card">
+        <div class="card" id="add-driver-card">
             <h3>Thêm tài xế mới</h3>
             <div class="form-row">
                 <input type="text" id="new-name" placeholder="Họ và tên">
@@ -107,6 +107,8 @@
         }
         const sb = createSb()
         let ownerProfileId = null
+        let currentRole = null
+        let currentUserId = null
 
         async function calcDriverBalance(sb, ownerId, driverId) {
             const { data: trips } = await sb.from('trips')
@@ -281,6 +283,7 @@
                     advanceButton.className = 'btn btn-success btn-sm'
                     advanceButton.textContent = '+ Tạm ứng'
                     advanceButton.addEventListener('click', () => openAdvanceModal(d.id, d.full_name || 'tài xế'))
+                    if (currentRole === 'supervisor') advanceButton.style.display = 'none'
 
                     const luongButton = document.createElement('button')
                     luongButton.className = 'btn btn-sm'
@@ -585,17 +588,19 @@
             tripsContainer.textContent = 'Đang tải...'
             body.appendChild(tripsContainer)
 
-            const deleteSection = document.createElement('div')
-            deleteSection.style.cssText = 'margin-top:20px;padding-top:16px;border-top:1px solid var(--border);text-align:right'
-            const deleteBtn = document.createElement('button')
-            deleteBtn.className = 'btn btn-danger btn-sm'
-            deleteBtn.textContent = '🗑️ Xóa tài xế'
-            deleteBtn.addEventListener('click', async () => {
-                const success = await deleteDriver(driverId, driverName)
-                if (success) closeTripsModal()
-            })
-            deleteSection.appendChild(deleteBtn)
-            body.appendChild(deleteSection)
+            if (currentRole !== 'supervisor') {
+                const deleteSection = document.createElement('div')
+                deleteSection.style.cssText = 'margin-top:20px;padding-top:16px;border-top:1px solid var(--border);text-align:right'
+                const deleteBtn = document.createElement('button')
+                deleteBtn.className = 'btn btn-danger btn-sm'
+                deleteBtn.textContent = '🗑️ Xóa tài xế'
+                deleteBtn.addEventListener('click', async () => {
+                    const success = await deleteDriver(driverId, driverName)
+                    if (success) closeTripsModal()
+                })
+                deleteSection.appendChild(deleteBtn)
+                body.appendChild(deleteSection)
+            }
 
             document.getElementById('trips-modal').style.display = 'flex'
             document.body.classList.add('modal-open')
@@ -740,7 +745,7 @@
             const { data } = await sb
                 .from('notify_settings')
                 .select('notify_new_trip, notify_complete, notify_expense, notify_maintenance')
-                .eq('user_id', ownerProfileId)
+                .eq('user_id', currentUserId)
                 .maybeSingle()
             document.getElementById('notif-new-trip').checked    = data ? data.notify_new_trip    : true
             document.getElementById('notif-complete').checked     = data ? data.notify_complete     : true
@@ -749,9 +754,8 @@
         }
 
         async function saveNotifySetting(key, value) {
-            console.log('saveNotifySetting', key, value, ownerProfileId)
             await sb.from('notify_settings')
-                .upsert({ user_id: ownerProfileId, [key]: value }, { onConflict: 'user_id' })
+                .upsert({ user_id: currentUserId, [key]: value }, { onConflict: 'user_id' })
         }
 
         function toggleNotifyPanel() {
@@ -759,13 +763,22 @@
             p.style.display = p.style.display === 'none' ? 'block' : 'none'
         }
 
+        function applyReadOnlyForSupervisor() {
+            if (currentRole !== 'supervisor') return
+            document.getElementById('add-driver-card').style.display = 'none'
+        }
+
         async function initPage() {
             setDriverMessage('Đang tải ...')
-            const auth = await requireRole(sb, 'owner')
+            const auth = await requireRole(sb, ['owner', 'supervisor'])
             if (!auth) return
-            ownerProfileId = auth.profile.id
+            currentRole = auth.profile.role
+            currentUserId = auth.profile.id
+            const effectiveOwnerId = currentRole === 'supervisor' ? auth.profile.owner_id : auth.profile.id
+            ownerProfileId = effectiveOwnerId
             loadNotifySettings()
-            setupPushNotifications(ownerProfileId)
+            setupPushNotifications(currentUserId)
+            applyReadOnlyForSupervisor()
             loadDrivers()
         }
 

@@ -36,7 +36,7 @@ async function getUserRole(sb, email) {
 async function getUserProfile(sb, email) {
     const { data, error } = await sb
         .from('users')
-        .select('id, role')
+        .select('id, role, owner_id')
         .eq('email', email)
         .maybeSingle()
     if (error) throw new Error(error.message)
@@ -46,6 +46,7 @@ async function getUserProfile(sb, email) {
 // Bảo vệ trang admin: kiểm tra session + role, redirect bai10 nếu không khớp.
 // Trả về { user, profile } hoặc null.
 async function requireRole(sb, expectedRole) {
+    const allowedRoles = Array.isArray(expectedRole) ? expectedRole : [expectedRole]
     let session = null
     try {
         const { data, error } = await sb.auth.getSession()
@@ -59,7 +60,7 @@ async function requireRole(sb, expectedRole) {
     if (session) {
         try {
             const profile = await getUserProfile(sb, session.user.email)
-            if (profile && profile.role === expectedRole) {
+            if (profile && allowedRoles.includes(profile.role)) {
                 return { user: session.user, profile }
             } else {
                 window.location.href = 'bai10.html'
@@ -70,7 +71,7 @@ async function requireRole(sb, expectedRole) {
             return null
         }
     } else {
-        if (expectedRole !== 'driver') {
+        if (!allowedRoles.includes('driver')) {
             window.location.href = 'bai10.html'
             return null
         }

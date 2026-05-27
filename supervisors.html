@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản lý Giám sát viên</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="shared.js"></script>
+</head>
+<body>
+    <div class="header">
+        <div style="display:flex; align-items:center; gap:8px;">
+            <button class="hamburger-btn" id="hamburger-btn">☰</button>
+            <div class="header-nav-desktop" style="display:flex; gap:8px;">
+                <button class="btn" onclick="window.location.href='owner-dashboard.html'">← Trang chủ</button>
+            </div>
+        </div>
+        <h2 style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);">👥 <span class="header-text">Giám sát viên</span></h2>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <div class="header-nav-desktop" style="display:flex; gap:8px;">
+                <button class="btn btn-logout" onclick="logout()">Đăng xuất</button>
+            </div>
+        </div>
+    </div>
+    <div class="hamburger-menu" id="hamburger-menu">
+        <a href="owner-dashboard.html">← Trang chủ</a>
+        <div class="menu-divider"></div>
+        <button class="menu-logout" id="menu-logout">🚪 Đăng xuất</button>
+    </div>
+    <div class="container">
+        <div class="card">
+            <h3>Thêm giám sát viên</h3>
+            <div class="form-row">
+                <input type="email" id="new-email" placeholder="Email Google (gmail)">
+                <input type="text" id="new-name" placeholder="Họ và tên">
+                <button class="btn" onclick="addSupervisor()">Thêm</button>
+            </div>
+            <p id="add-msg" style="display:none; color:var(--success); font-weight:bold"></p>
+        </div>
+        <div class="card">
+            <h3>Danh sách giám sát viên</h3>
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Email</th>
+                            <th>Họ và tên</th>
+                            <th>Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody id="supervisor-list">
+                        <tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:16px">Đang tải...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="toast" id="toast"></div>
+    <script>
+        function showToast(msg, type = '') {
+            const toast = document.getElementById('toast')
+            toast.textContent = msg
+            toast.className = 'toast show ' + type
+            setTimeout(() => toast.className = 'toast', 3000)
+        }
+
+        const sb = createSb()
+        let ownerProfileId = null
+
+        async function loadSupervisors() {
+            const tbody = document.getElementById('supervisor-list')
+            const { data, error } = await sb.from('users')
+                .select('id, email, full_name')
+                .eq('owner_id', ownerProfileId)
+                .eq('role', 'supervisor')
+                .order('full_name', { ascending: true })
+
+            if (error) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--danger)">Lỗi tải dữ liệu</td></tr>'
+                showToast('Lỗi: ' + error.message, 'error')
+                return
+            }
+
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:16px">Chưa có giám sát viên nào</td></tr>'
+                return
+            }
+
+            tbody.textContent = ''
+            data.forEach(s => {
+                const row = document.createElement('tr')
+                const emailTd = document.createElement('td')
+                emailTd.textContent = s.email || '-'
+                const nameTd = document.createElement('td')
+                nameTd.textContent = s.full_name || '-'
+                const actionTd = document.createElement('td')
+                const delBtn = document.createElement('button')
+                delBtn.className = 'btn btn-danger btn-sm'
+                delBtn.textContent = 'Xóa'
+                delBtn.addEventListener('click', () => deleteSupervisor(s.id, s.full_name || s.email))
+                actionTd.appendChild(delBtn)
+                row.append(emailTd, nameTd, actionTd)
+                tbody.appendChild(row)
+            })
+        }
+
+        async function addSupervisor() {
+            const email = document.getElementById('new-email').value.trim().toLowerCase()
+            const full_name = document.getElementById('new-name').value.trim()
+            if (!email) { showToast('Vui lòng nhập email!', 'error'); return }
+            if (!full_name) { showToast('Vui lòng nhập họ và tên!', 'error'); return }
+
+            const { data: existing, error: existErr } = await sb.from('users')
+                .select('id')
+                .eq('email', email)
+                .maybeSingle()
+            if (existErr) { showToast('Lỗi kiểm tra email: ' + existErr.message, 'error'); return }
+            if (existing) { showToast('Email này đã tồn tại trong hệ thống!', 'error'); return }
+
+            const { error } = await sb.from('users').insert({
+                email,
+                full_name,
+                role: 'supervisor',
+                owner_id: ownerProfileId
+            })
+            if (error) { showToast('Lỗi: ' + error.message, 'error'); return }
+
+            document.getElementById('new-email').value = ''
+            document.getElementById('new-name').value = ''
+            const msg = document.getElementById('add-msg')
+            msg.style.display = 'block'
+            msg.textContent = 'Thêm giám sát viên thành công!'
+            setTimeout(() => { msg.style.display = 'none' }, 3000)
+            loadSupervisors()
+        }
+
+        async function deleteSupervisor(id, name) {
+            if (!confirm('Xóa giám sát viên ' + name + '? Họ sẽ không còn truy cập được hệ thống.')) return
+            const { error } = await sb.from('users').delete().eq('id', id)
+            if (error) { showToast('Lỗi: ' + error.message, 'error'); return }
+            showToast('Đã xóa giám sát viên', 'success')
+            loadSupervisors()
+        }
+
+        async function logout() {
+            await sb.auth.signOut()
+            window.location.href = 'bai10.html'
+        }
+
+        async function initPage() {
+            const auth = await requireRole(sb, 'owner')
+            if (!auth) return
+            ownerProfileId = auth.profile.id
+            loadSupervisors()
+        }
+
+        setupLogoutListener(sb)
+        initPage()
+        ;(function() {
+            const btn = document.getElementById('hamburger-btn')
+            const menu = document.getElementById('hamburger-menu')
+            btn.addEventListener('click', e => { e.stopPropagation(); menu.classList.toggle('show') })
+            document.addEventListener('click', e => {
+                if (!e.target.closest('#hamburger-menu') && !e.target.closest('#hamburger-btn'))
+                    menu.classList.remove('show')
+            })
+            document.getElementById('menu-logout').addEventListener('click', logout)
+        })()
+    </script>
+</body>
+</html>

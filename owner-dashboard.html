@@ -30,6 +30,7 @@
                     <button class="btn" onclick="window.location.href='driver.html'">👥 Tài xế</button>
                     <button class="btn" onclick="window.location.href='vehicles.html'">🚛 Xe</button>
                     <button class="btn" onclick="window.location.href='luong-thang.html'">💰 Bảng lương</button>
+                    <button id="btn-supervisors-nav" class="btn" onclick="window.location.href='supervisors.html'" style="display:none">👥 Giám sát viên</button>
                 </div>
                 <button id="btn-notify" class="btn" onclick="toggleNotifyPanel()">🔔</button>
                 <div class="header-nav-desktop" style="display:flex; gap:8px;">
@@ -41,6 +42,7 @@
             <a href="driver.html">👥 Tài xế</a>
             <a href="vehicles.html">🚛 Xe</a>
             <a href="luong-thang.html">💰 Bảng lương</a>
+            <a id="menu-supervisors-link" href="supervisors.html" style="display:none">👥 Giám sát viên</a>
             <div class="menu-divider"></div>
             <button class="menu-logout" id="menu-logout">🚪 Đăng xuất</button>
         </div>
@@ -99,7 +101,7 @@
                 <input type="month" id="filter-month">
                 <button class="btn" onclick="loadTrips()">Lọc</button>
                 <button class="btn btn-gray" onclick="clearFilter()">Tất cả</button>
-                <button class="btn btn-success" onclick="openNewTripModal()">➕ Tạo chuyến</button>
+                <button id="btn-tao-chuyen" class="btn btn-success" onclick="openNewTripModal()">➕ Tạo chuyến</button>
             </div>
             <div class="table-scroll wide">
                 <table>
@@ -133,6 +135,8 @@
             const statusMessage = document.getElementById('status-message')
             let tripsChannel = null
             let currentOwnerProfileId = null
+            let currentRole = null
+            let currentUserId = null
 
             const VAPID_PUBLIC_KEY = 'BJO2an5FL6G-ROpD5_krG8QteQJW2aiTNR-GDEhAh4mMC1rX10gDmMDjaXpUcHTsgAQpzZNVdVUdpwE2XvVr070'
 
@@ -169,7 +173,7 @@
                 const { data } = await sb
                     .from('notify_settings')
                     .select('notify_new_trip, notify_complete, notify_expense, notify_maintenance')
-                    .eq('user_id', currentOwnerProfileId)
+                    .eq('user_id', currentUserId)
                     .maybeSingle()
                 document.getElementById('notif-new-trip').checked    = data ? data.notify_new_trip    : true
                 document.getElementById('notif-complete').checked     = data ? data.notify_complete     : true
@@ -178,9 +182,8 @@
             }
 
             async function saveNotifySetting(key, value) {
-                console.log('saveNotifySetting', key, value, currentOwnerProfileId)
                 await sb.from('notify_settings')
-                    .upsert({ user_id: currentOwnerProfileId, [key]: value }, { onConflict: 'user_id' })
+                    .upsert({ user_id: currentUserId, [key]: value }, { onConflict: 'user_id' })
             }
 
             function toNumber(value) {
@@ -313,16 +316,29 @@
                 loadTrips()
             }
 
+            function applyReadOnlyForSupervisor() {
+                if (currentRole !== 'supervisor') {
+                    document.getElementById('btn-supervisors-nav').style.display = ''
+                    document.getElementById('menu-supervisors-link').style.display = ''
+                    return
+                }
+                document.getElementById('btn-tao-chuyen').style.display = 'none'
+            }
+
             async function initPage() {
                 try {
                     setTotals(0, 0, 0)
                     hideStatus()
-                    const auth = await requireRole(sb, 'owner')
+                    const auth = await requireRole(sb, ['owner', 'supervisor'])
                     if (!auth) return
-                    currentOwnerProfileId = auth.profile.id
-                    setupPushNotifications(currentOwnerProfileId)
+                    currentRole = auth.profile.role
+                    currentUserId = auth.profile.id
+                    const effectiveOwnerId = currentRole === 'supervisor' ? auth.profile.owner_id : auth.profile.id
+                    currentOwnerProfileId = effectiveOwnerId
+                    setupPushNotifications(currentUserId)
                     loadNotifySettings()
                     await loadTrips()
+                    applyReadOnlyForSupervisor()
                     tripsChannel = sb.channel('trips-changes')
                         .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, payload => {
                             console.log('Change detected:', payload)
