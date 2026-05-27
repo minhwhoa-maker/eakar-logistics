@@ -4,11 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-<<<<<<< HEAD
-Fleet management app cho công ty vận tải Ea Kar — owner theo dõi chuyến/doanh thu/lương, driver nhập chuyến và upload ảnh hóa đơn. Khởi nguồn là dự án học code (`bai*`); các bài tập cũ `bai1-9.html` đã xóa, chỉ còn `bai10.html` là landing/auth thực tế. App chạy trên 2 trang auth (`bai10.html` landing/Google OAuth, `login-sdt.html` SMS OTP login) + 7 trang admin/driver: `owner-dashboard.html`, `driver.html`, `vehicles.html`, `luong-thang.html`, `luong-cua-toi.html`, `driver-page.html`, `trip-detail.html`.
-=======
 Fleet management app cho công ty vận tải Ea Kar — owner theo dõi chuyến/doanh thu/lương, driver nhập chuyến và upload ảnh hóa đơn. Khởi nguồn là dự án học code (`bai*`); các bài tập cũ `bai1-9.html` đã xóa, chỉ còn `bai10.html` là landing/auth thực tế. App chạy trên `bai10.html` + 8 trang admin/driver: `owner-dashboard.html`, `driver.html`, `vehicles.html`, `luong-thang.html`, `luong-cua-toi.html`, `driver-page.html`, `trip-detail.html`, `supervisors.html`.
->>>>>>> a9595fadd826fd86685d653e4349cae1ebab0b15
 
 - Stack: Vanilla HTML/CSS/JS + Supabase (Postgres + Auth + Storage + Realtime) + Vercel
 - Live: https://fucking-learning-code.vercel.app
@@ -218,11 +214,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 #### `sw.js` + `manifest.json` — PWA
 - Chỉ register từ `bai10.html`
 - STATIC_ASSETS: `bai10.html`, `style.css`, `manifest.json`, icons — **`shared.js` và tất cả admin pages không được pre-cache**, chỉ dynamic-cache khi navigate tới
-<<<<<<< HEAD
-- Khi deploy thay đổi cho bất kỳ file nào trong STATIC_ASSETS, phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v26`) để invalidate cache cũ
-=======
-- Khi deploy thay đổi cho bất kỳ file nào trong STATIC_ASSETS, phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v27`) để invalidate cache cũ
->>>>>>> a9595fadd826fd86685d653e4349cae1ebab0b15
+- Khi deploy thay đổi cho bất kỳ file nào trong STATIC_ASSETS, phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v28`) để invalidate cache cũ
 - Push handler + notificationclick handler (focus tab cũ hoặc mở tab mới tới URL trong `notification.data.url`)
 
 ---
@@ -304,6 +296,7 @@ Khi user case (b) login lần đầu, bai10 thấy email đã có → skip inser
   - **h2** `style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%)"`: tách khỏi flex flow, căn giữa thật sự. `position:sticky` của `.header` (style.css) là containing block — **không cần thêm `position:relative`**
   - **right-zone** `<div style="display:flex; align-items:center; gap:8px;">`: dùng **dual `header-nav-desktop` wrapper**: `[header-nav-desktop: nav/action buttons]` + `[🔔 btn-notify standalone]` + `[header-nav-desktop: Đăng xuất]`. Pages không có nav buttons bỏ wrapper đầu; pages không có 🔔 bỏ luôn phần đó.
   - Mobile (≤600px): `header-nav-desktop` ẩn (`display:none !important`), chỉ hamburger-btn và 🔔 hiện. `.header-text` trong h2 cũng ẩn — chỉ emoji hiện. `style.css` có `@media (max-width:600px)` override padding/font-size cho `.header`, `.header h2`, `.header > div` — **không cần thêm local `<style>` block** trong từng page cho mobile header.
+- **Role-gating pattern** (supervisor/owner): `.owner-only { display:none !important }` mặc định trong style.css; `body.role-owner .owner-only { display:revert !important }` gỡ ẩn cho owner. JS thêm `document.body.classList.add('role-owner')` ngay sau khi gán `currentRole`, trước mọi render. Hamburger menu `<a>` cần rule scoped riêng `body.role-owner .hamburger-menu .owner-only { display:block !important }` vì `revert` về UA default `inline`. `.supervisor-only` là ngược lại: hiện mặc định, ẩn khi `body.role-owner`. Feature gating theo role mới dùng pattern này, KHÔNG dùng `style.display='none'` trong JS.
 
 ### Notification pattern (showToast)
 Tất cả page admin/driver dùng `showToast()` cho user feedback. Mỗi file tự định nghĩa hàm này ở đầu `<script>` (không phải trong `shared.js`) và cần `<div class="toast" id="toast"></div>` trước `</body>`:
