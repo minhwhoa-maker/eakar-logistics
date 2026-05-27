@@ -45,22 +45,74 @@ async function getUserProfile(sb, email) {
 
 // Bảo vệ trang admin: kiểm tra session + role, redirect bai10 nếu không khớp.
 // Trả về { user, profile } hoặc null.
-async function requireRole(sb, requiredRole) {
-    const { data, error } = await sb.auth.getSession()
-    if (error || !data?.session?.user?.email) {
-        window.location.href = 'bai10.html'
-        return null
-    }
+async function requireRole(sb, expectedRole) {
+    let session = null
     try {
-        const profile = await getUserProfile(sb, data.session.user.email)
-        if (profile?.role !== requiredRole) {
+        const { data, error } = await sb.auth.getSession()
+        if (!error && data?.session?.user?.email) {
+            session = data.session
+        }
+    } catch {
+        // Ignore and treat as no session
+    }
+
+    if (session) {
+        try {
+            const profile = await getUserProfile(sb, session.user.email)
+            if (profile && profile.role === expectedRole) {
+                return { user: session.user, profile }
+            } else {
+                window.location.href = 'bai10.html'
+                return null
+            }
+        } catch {
             window.location.href = 'bai10.html'
             return null
         }
-        return { user: data.session.user, profile }
-    } catch {
-        window.location.href = 'bai10.html'
-        return null
+    } else {
+        if (expectedRole !== 'driver') {
+            window.location.href = 'bai10.html'
+            return null
+        }
+
+        const token = localStorage.getItem('driver_token')
+        if (!token) {
+            window.location.href = 'login-sdt.html'
+            return null
+        }
+
+        try {
+            const res = await fetch('/api/verify-session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token })
+            })
+            if (!res.ok) {
+                localStorage.removeItem('driver_token')
+                window.location.href = 'login-sdt.html'
+                return null
+            }
+            const data = await res.json()
+            if (!data || data.role !== 'driver') {
+                localStorage.removeItem('driver_token')
+                window.location.href = 'login-sdt.html'
+                return null
+            }
+            return {
+                user: { id: data.id },
+                profile: {
+                    id: data.id,
+                    role: data.role,
+                    full_name: data.full_name,
+                    sdt: data.sdt,
+                    owner_id: data.owner_id
+                }
+            }
+        } catch {
+            localStorage.removeItem('driver_token')
+            window.location.href = 'login-sdt.html'
+            return null
+        }
     }
 }
 
@@ -68,6 +120,7 @@ async function requireRole(sb, requiredRole) {
 function setupLogoutListener(sb) {
     sb.auth.onAuthStateChange((event, session) => {
         if (event === 'SIGNED_OUT' || !session) {
+            if (localStorage.getItem('driver_token')) return
             window.location.href = 'bai10.html'
         }
     })

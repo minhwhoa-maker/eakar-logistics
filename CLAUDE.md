@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Fleet management app cho công ty vận tải Ea Kar — owner theo dõi chuyến/doanh thu/lương, driver nhập chuyến và upload ảnh hóa đơn. Đây là dự án học code (`bai*`) tăng dần, các file `bai1-9.html` là bài tập cũ, app thực tế chạy trên `bai10.html` + 4 trang admin/driver.
+Fleet management app cho công ty vận tải Ea Kar — owner theo dõi chuyến/doanh thu/lương, driver nhập chuyến và upload ảnh hóa đơn. Khởi nguồn là dự án học code (`bai*`); các bài tập cũ `bai1-9.html` đã xóa, chỉ còn `bai10.html` là landing/auth thực tế. App chạy trên `bai10.html` + 7 trang admin/driver: `owner-dashboard.html`, `driver.html`, `vehicles.html`, `luong-thang.html`, `luong-cua-toi.html`, `driver-page.html`, `trip-detail.html`.
 
 - Stack: Vanilla HTML/CSS/JS + Supabase (Postgres + Auth + Storage + Realtime) + Vercel
 - Live: https://fucking-learning-code.vercel.app
@@ -307,6 +307,12 @@ Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"typ
   - `'maintenance'`: `{ driver_name, bien_so, bo_phan, chi_phi, trip_id }`
   
   Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`.
+- **`api/send-otp.js`** — POST `{ sdt }` (SĐT `0901234567`, normalize chỉ `.trim()`). Gửi OTP 6 số cho driver login qua SMS. **Feature đang làm dở** — đã có endpoint gửi mã + verify (`verify-otp.js`); CHƯA có frontend wiring, CHƯA tạo bảng DB (`otp_codes`, `sessions`), SpeedSMS chưa tích hợp. Flow: validate sdt → check `users` (phải tồn tại + `role='driver'`, nếu không trả 404/403) → rate-limit lớp 1 (60s giữa 2 lần xin mã) → rate-limit lớp 2 (≤5 mã/24h) → set `used=true` mọi mã cũ → tạo mã bằng `crypto.randomInt(100000, 1000000)` (crypto-secure, luôn 6 số) → INSERT `otp_codes` → gọi `sendSms()`. **TUYỆT ĐỐI không trả `code` về client** (chỉ `{ ok: true }`). Tradeoff đã biết: 404/403/200 khác nhau → cho phép phone enumeration (chấp nhận để UX báo lỗi rõ). Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SPEEDSMS_API_KEY` (chưa cấu hình).
+  - **Phụ thuộc CHƯA tạo**: bảng `otp_codes` chưa tồn tại trên Supabase — phải tạo trước khi endpoint chạy. Schema đề xuất: `(id uuid PK, sdt text, code text, expires_at timestamptz, used bool DEFAULT false, wrong_attempts int DEFAULT 0, created_at timestamptz DEFAULT now())`. Cột `created_at DEFAULT now()` bắt buộc — cả 2 rate-limit dựa vào nó và code không insert thủ công.
+  - **SpeedSMS chưa tích hợp**: `sendSms(sdt, code)` hiện chỉ `console.log` mã ra Vercel logs (đọc log để test dev), bọc try/catch nên fail không vỡ flow. Khi có API key/docs thì cắm vào hàm này, dùng `process.env.SPEEDSMS_API_KEY` (KHÔNG hardcode).
+- **`api/verify-otp.js`** — POST `{ sdt, code }`. Verify OTP → tạo session token cho driver login. Flow: validate (`sdt` phải `typeof === 'string'`; `code = String(rawCode ?? '').trim()` rồi match `/^\d{6}$/`) → query `otp_codes` mã chưa dùng mới nhất (`.eq('used', false).order('created_at', { ascending: false }).limit(1)`, access `rows[0]` — KHÔNG `.maybeSingle()`) → check `expires_at` < now → check `wrong_attempts >= 5` → so sánh `code` (sai → UPDATE `wrong_attempts + 1` theo kiểu đọc-rồi-ghi, **không atomic**) → query `users.id` by `sdt` (`.maybeSingle()`) → mark `used=true` → tạo token `crypto.randomBytes(32).toString('hex')` → INSERT `sessions {token, user_id}` → trả `{ ok: true, token }`. **Session KHÔNG có expiry** (chủ ý — verify-session cũng không check). Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
+  - **Phụ thuộc CHƯA tạo**: bảng `sessions` chưa tồn tại trên Supabase — `CREATE TABLE sessions (token text PRIMARY KEY, user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE, created_at timestamptz DEFAULT now())`. FK phải → `public.users` (KHÔNG `auth.users`); `token` phải PK/UNIQUE để verify-session `.maybeSingle()` an toàn.
+  - **`users.sdt` cần UNIQUE**: lookup ở step query `users.id` dùng `.maybeSingle()` — nếu 2 driver trùng `sdt` sẽ vỡ. (NULL được phép trùng trong UNIQUE Postgres nên owner row `sdt=NULL` không sao.)
 
 ### Vercel environment variables (tổng hợp)
 
@@ -314,11 +320,12 @@ Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"typ
 |---|---|
 | `ANTHROPIC_API_KEY` | `api/chat.js` |
 | `VIETMAP_API_KEY` | `api/maps.js` |
-| `SUPABASE_URL` | `api/subscribe.js`, `api/notify.js` |
-| `SUPABASE_SERVICE_KEY` | `api/subscribe.js`, `api/notify.js` |
+| `SUPABASE_URL` | `api/subscribe.js`, `api/notify.js`, `api/send-otp.js`, `api/verify-otp.js` |
+| `SUPABASE_SERVICE_KEY` | `api/subscribe.js`, `api/notify.js`, `api/send-otp.js`, `api/verify-otp.js` |
 | `VAPID_SUBJECT` | `api/notify.js` |
 | `VAPID_PUBLIC_KEY` | `api/notify.js` |
 | `VAPID_PRIVATE_KEY` | `api/notify.js` |
+| `SPEEDSMS_API_KEY` | `api/send-otp.js` (chưa cấu hình — SpeedSMS chưa tích hợp) |
 
 ## Database
 
@@ -454,4 +461,4 @@ notify_settings    (user_id uuid PK, notify_new_trip bool, notify_complete bool,
   - `luong-thang.html` → `ownerProfileId` (module level, gán từ `auth.profile.id` trong `initPage()`)
   - `driver-page.html` → `currentOwnerId` (module level, query `users.owner_id where id = currentProfileId` trong `initPage()`)
   - `trip-detail.html` → `ownerId` (local trong `initPage()`: nếu owner thì `currentProfile.id`, nếu driver thì query DB; nếu null thì toast + redirect)
-- **FK trên `notify_settings` và `push_subscriptions`**: cột `user_id` phải references `public.users(id)`, **không phải** `auth.users(id)`. Nếu tạo FK sai sang `auth.users`, insert/upsert sẽ fail với foreign key violation vì app dùng `users.id` (DB-generated UUID), không phải Auth UUID.
+- **FK trên `notify_settings`, `push_subscriptions`, `sessions`**: cột `user_id` phải references `public.users(id)`, **không phải** `auth.users(id)`. Nếu tạo FK sai sang `auth.users`, insert/upsert sẽ fail với foreign key violation vì app dùng `users.id` (DB-generated UUID), không phải Auth UUID.

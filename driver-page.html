@@ -1429,8 +1429,8 @@
 
     // ── Auth ──────────────────────────────────────────────────────────
     async function logout() {
-        await sb.auth.signOut()
-        window.location.href = 'bai10.html'
+        localStorage.removeItem('driver_token')
+        window.location.href = 'login-sdt.html'
     }
 
     async function initPage() {
