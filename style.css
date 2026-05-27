@@ -770,3 +770,14 @@ tr:hover td { background: #f9f9fc; }
     .hamburger-btn { display: inline-block; }
     .header-nav-desktop { display: none !important; }
 }
+
+/* Owner-only UI: ẩn mặc định, hiện khi body có class role-owner.
+   Tránh flash of unauthorized UI khi supervisor login. */
+.owner-only { display: none !important; }
+body.role-owner .owner-only { display: revert !important; }
+/* Hamburger menu <a>/<button> lấy display:block từ class rule, không phải UA default.
+   revert sẽ trả <a> về inline → vỡ layout menu. Scope lại về block khi hiện. */
+body.role-owner .hamburger-menu .owner-only { display: block !important; }
+
+/* Supervisor-only: ngược lại owner-only. Hiện mặc định, ẩn khi owner. */
+body.role-owner .supervisor-only { display: none !important; }

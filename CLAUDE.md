@@ -4,7 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
+<<<<<<< HEAD
 Fleet management app cho công ty vận tải Ea Kar — owner theo dõi chuyến/doanh thu/lương, driver nhập chuyến và upload ảnh hóa đơn. Khởi nguồn là dự án học code (`bai*`); các bài tập cũ `bai1-9.html` đã xóa, chỉ còn `bai10.html` là landing/auth thực tế. App chạy trên 2 trang auth (`bai10.html` landing/Google OAuth, `login-sdt.html` SMS OTP login) + 7 trang admin/driver: `owner-dashboard.html`, `driver.html`, `vehicles.html`, `luong-thang.html`, `luong-cua-toi.html`, `driver-page.html`, `trip-detail.html`.
+=======
+Fleet management app cho công ty vận tải Ea Kar — owner theo dõi chuyến/doanh thu/lương, driver nhập chuyến và upload ảnh hóa đơn. Khởi nguồn là dự án học code (`bai*`); các bài tập cũ `bai1-9.html` đã xóa, chỉ còn `bai10.html` là landing/auth thực tế. App chạy trên `bai10.html` + 8 trang admin/driver: `owner-dashboard.html`, `driver.html`, `vehicles.html`, `luong-thang.html`, `luong-cua-toi.html`, `driver-page.html`, `trip-detail.html`, `supervisors.html`.
+>>>>>>> a9595fadd826fd86685d653e4349cae1ebab0b15
 
 - Stack: Vanilla HTML/CSS/JS + Supabase (Postgres + Auth + Storage + Realtime) + Vercel
 - Live: https://fucking-learning-code.vercel.app
@@ -57,7 +61,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 **Notify panel** (chung cho 4 trang owner)
 - `#btn-notify` → `#notify-panel` (fixed top:64px right:16px, click-outside để đóng), 4 toggle (notify_new_trip / notify_complete / notify_expense / notify_maintenance), load/save qua `notify_settings`
 - `setupPushNotifications(userId)` chạy mỗi lần login
-- JS dependencies (`VAPID_PUBLIC_KEY`, `urlBase64ToUint8Array`, `setupPushNotifications`, `loadNotifySettings`, `saveNotifySetting`, `toggleNotifyPanel`) định nghĩa **local trong mỗi file** (không phải `shared.js`); dùng `ownerProfileId` (trừ owner-dashboard dùng `currentOwnerProfileId`)
+- JS dependencies (`VAPID_PUBLIC_KEY`, `urlBase64ToUint8Array`, `setupPushNotifications`, `loadNotifySettings`, `saveNotifySetting`, `toggleNotifyPanel`) định nghĩa **local trong mỗi file** (không phải `shared.js`); dùng `currentUserId` (là `auth.profile.id` — luôn là ID của user đang đăng nhập, **không phải** `effectiveOwnerId`) để tránh ghi đè notification settings của admin khi supervisor dùng
 
 **Tạo chuyến** (`#new-trip-modal`)
 - 2 mode qua tab buttons (`tab-co-dinh`/`tab-theo-km`) + hidden `#nt-loai-luong`; `setTripTab(mode)` toggle UI
@@ -201,10 +205,24 @@ Không có build step, không có test runner, không có lint. Quy trình:
 
 ---
 
+#### `supervisors.html` — owner quản lý giám sát viên (Phase A)
+- Auth: `requireRole(sb, 'owner')` — CHỈ owner gốc, supervisor không vào được
+- Chức năng: danh sách supervisor (query `users` `.eq('role','supervisor').eq('owner_id', ownerProfileId)`), thêm (INSERT với `role:'supervisor'`), xóa có confirm
+- Supervisor login qua Google OAuth → `bai10.redirectByRole` redirect sang `owner-dashboard.html`
+- **Phase A — read-only mềm**: supervisor thấy đúng fleet của admin (4 trang: owner-dashboard, driver, vehicles, luong-thang) nhưng mọi nút tạo/sửa/xóa bị ẩn bởi `applyReadOnlyForSupervisor()` gọi sau init. RLS chưa bật → đây là phòng thủ UI thuần, chưa phải server-side. Phase B (RLS) là milestone riêng.
+- Pattern effectiveOwnerId: `supervisor ? profile.owner_id : profile.id` — gán vào biến owner-id của trang để mọi query `.eq('owner_id', ...)` tự đúng fleet admin
+- `currentUserId = auth.profile.id` (ID của người đang đăng nhập) dùng riêng cho `setupPushNotifications` và `loadNotifySettings`/`saveNotifySetting` — không dùng `effectiveOwnerId` để tránh đụng notification settings của admin
+
+---
+
 #### `sw.js` + `manifest.json` — PWA
 - Chỉ register từ `bai10.html`
 - STATIC_ASSETS: `bai10.html`, `style.css`, `manifest.json`, icons — **`shared.js` và tất cả admin pages không được pre-cache**, chỉ dynamic-cache khi navigate tới
+<<<<<<< HEAD
 - Khi deploy thay đổi cho bất kỳ file nào trong STATIC_ASSETS, phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v26`) để invalidate cache cũ
+=======
+- Khi deploy thay đổi cho bất kỳ file nào trong STATIC_ASSETS, phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v27`) để invalidate cache cũ
+>>>>>>> a9595fadd826fd86685d653e4349cae1ebab0b15
 - Push handler + notificationclick handler (focus tab cũ hoặc mở tab mới tới URL trong `notification.data.url`)
 
 ---
@@ -216,8 +234,9 @@ formatBienSo(s)         → chuẩn hóa biển số thành dạng "XX-NNN.NN" (
 formatMoney(n)          → "1.234.567 đ" (vi-VN locale + đ ký tự)
 formatDate(timestamptz) → "HH:MM - DD/MM/YY" (nhận ISO string hoặc timestamptz từ Supabase)
 getUserRole(sb, email)  → role string hoặc null
-getUserProfile(sb, email) → { id, role } hoặc null
+getUserProfile(sb, email) → { id, role, owner_id } hoặc null
 requireRole(sb, role)   → đảm bảo session + role khớp; redirect bai10 nếu không.
+                          Nhận string (cũ) hoặc array (mới): `requireRole(sb, ['owner', 'supervisor'])`.
                           Trả { user, profile } hoặc null.
 setupLogoutListener(sb) → tự redirect bai10 khi logout từ tab khác.
 getLocation()           → Promise<{ lat, lng }> — dùng Geolocation API, timeout 10s.
@@ -340,8 +359,9 @@ Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"typ
 
 ```
 users          (id, email, full_name, sdt, role, owner_id, cho_phep_xem_luong bool)
-                -- role: 'owner' | 'driver'
-                -- owner_id: uuid FK → users.id; set khi owner tạo driver qua driver.html; NULL cho owner row
+                -- role: 'owner' | 'driver' | 'supervisor'
+                -- owner_id: uuid FK → users.id; set khi owner tạo driver/supervisor; NULL cho owner row
+                -- supervisor.owner_id = admin owner's users.id (giống pattern driver)
                 -- cho_phep_xem_luong: chỉ meaningful trên owner row; driver đọc qua FK owner_id
 trips          (id, owner_id, ngay_bat_dau, ngay_ket_thuc, tuyen_duong, doanh_thu,
                 chi_phi, luong_chuyen, tam_ung, hoan_ung, tai_xe_id, xe_id,
@@ -463,11 +483,12 @@ notify_settings    (user_id uuid PK, notify_new_trip bool, notify_complete bool,
 - **Google OAuth `redirectTo`**: dùng `window.location.origin + '/bai10.html'` để hoạt động cả local và production.
 - **`maybeSingle()` error handling**: luôn destructure cả `data` lẫn `error`. `{ data: null, error: null }` nghĩa là không tìm thấy row (bình thường). `error !== null` mới là lỗi DB thật. Pattern chuẩn: `const { data: x, error: xErr } = await sb.from(...).maybeSingle(); if (xErr) { showToast(...); return } if (x) { /* trùng */ return }`
 - **Clickable cell pattern**: khi một cell trong bảng là entry point vào modal, tạo `<span>` bên trong `<td>` với `style.color = 'var(--primary)'`, `textDecoration = 'underline'`, `cursor = 'pointer'`. Dùng `addEventListener('click', ...)` thay vì `onclick` attribute (đảm bảo closure đúng trong forEach).
-- **`owner_id` pattern** — `trips`, `xe`, `bao_duong`, `tam_ung_thang`, `luong_thang` đều có cột `owner_id` = `users.id` của owner. **Mọi SELECT phải filter `.eq('owner_id', ...)`, mọi INSERT phải include `owner_id`.** Mỗi page lưu owner_id vào biến riêng:
-  - `owner-dashboard.html` → `currentOwnerProfileId` (module level, gán từ `auth.profile.id` trong `initPage()`)
-  - `driver.html` → `ownerProfileId` (module level, gán từ `auth.profile.id` trong `initPage()`)
-  - `vehicles.html` → `ownerProfileId` (module level, gán từ `auth.profile.id` trong `init()`)
-  - `luong-thang.html` → `ownerProfileId` (module level, gán từ `auth.profile.id` trong `initPage()`)
+- **`owner_id` pattern** — `trips`, `xe`, `bao_duong`, `tam_ung_thang`, `luong_thang` đều có cột `owner_id` = `users.id` của owner. **Mọi SELECT phải filter `.eq('owner_id', ...)`, mọi INSERT phải include `owner_id`.** Mỗi page lưu owner_id vào biến riêng (gọi là `effectiveOwnerId` trong init — bằng `profile.id` cho owner, bằng `profile.owner_id` cho supervisor):
+  - `owner-dashboard.html` → `currentOwnerProfileId` (module level)
+  - `driver.html` → `ownerProfileId` (module level)
+  - `vehicles.html` → `ownerProfileId` (module level)
+  - `luong-thang.html` → `ownerProfileId` (module level)
+  - Ngoài ra mỗi trang có `currentUserId = auth.profile.id` (luôn là ID user đang đăng nhập) dùng riêng cho notify settings/push subscription
   - `driver-page.html` → `currentOwnerId` (module level, query `users.owner_id where id = currentProfileId` trong `initPage()`)
   - `trip-detail.html` → `ownerId` (local trong `initPage()`: nếu owner thì `currentProfile.id`, nếu driver thì query DB; nếu null thì toast + redirect)
 - **FK trên `notify_settings`, `push_subscriptions`, `sessions`**: cột `user_id` phải references `public.users(id)`, **không phải** `auth.users(id)`. Nếu tạo FK sai sang `auth.users`, insert/upsert sẽ fail với foreign key violation vì app dùng `users.id` (DB-generated UUID), không phải Auth UUID.

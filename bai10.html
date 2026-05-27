@@ -412,9 +412,9 @@
             try {
                 const role = await checkUserRole(user);
                 if (!role) return;
-                showLoading(role === 'owner' ? 'Đang vào dashboard...' : 'Đang vào trang tài xế...');
+                showLoading((role === 'owner' || role === 'supervisor') ? 'Đang vào dashboard...' : 'Đang vào trang tài xế...');
                 setTimeout(() => {
-                    window.location.href = role === 'owner' ? 'owner-dashboard.html' : 'driver-page.html';
+                    window.location.href = (role === 'owner' || role === 'supervisor') ? 'owner-dashboard.html' : 'driver-page.html';
                 }, 600);
             } catch (err) {
                 console.error('Role check error:', err);

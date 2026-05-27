@@ -64,7 +64,7 @@
         </div>
     </div>
     <div class="container">
-        <div class="card">
+        <div class="card owner-only" id="add-vehicle-card">
             <h3>Thêm xe mới</h3>
             <div class="form-row">
                 <input type="text" id="new-bien-so" placeholder="Biển số">
@@ -108,13 +108,15 @@
         </div>
         <div class="card">
             <h3>💰 Bảng lương theo km</h3>
+            <div id="km-add-form" class="owner-only">
             <div class="form-row">
                 <select id="km-loai-xe"></select>
                 <input type="text" id="km-tu" placeholder="Km từ">
                 <input type="text" id="km-den" placeholder="Km đến (để trống = không giới hạn)">
                 <input type="text" id="km-so-tien" placeholder="Số tiền (VNĐ)">
             </div>
-            <button class="btn" onclick="addKmRate()">+ Thêm bậc</button>
+            <button id="btn-add-km-rate" class="btn" onclick="addKmRate()">+ Thêm bậc</button>
+            </div>
             <div style="margin-top:16px">
                 <select id="km-filter-loai" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px;color:#1a1a2e;background:white;margin-bottom:8px"></select>
                 <div id="km-rate-list"></div>
@@ -201,6 +203,8 @@
 
         const sb = createSb()
         let ownerProfileId = null
+        let currentRole = null
+        let currentUserId = null
         let drivers = []
         let currentMaintXeId = null
         let maintModalChiPhiInitialized = false
@@ -416,10 +420,12 @@
                     const plateCell = document.createElement('td')
                     const plate = document.createElement('strong')
                     plate.textContent = v.bien_so ? formatBienSo(v.bien_so) : '-'
-                    plate.style.color = 'var(--primary)'
-                    plate.style.textDecoration = 'underline'
-                    plate.style.cursor = 'pointer'
-                    plate.addEventListener('click', () => openDriverModal(v.id, v.tai_xe_id))
+                    if (currentRole !== 'supervisor') {
+                        plate.style.color = 'var(--primary)'
+                        plate.style.textDecoration = 'underline'
+                        plate.style.cursor = 'pointer'
+                        plate.addEventListener('click', () => openDriverModal(v.id, v.tai_xe_id))
+                    }
                     plateCell.appendChild(plate)
                     if (nextMaintMap[v.id]) {
                         const daysLeft = Math.round((new Date(nextMaintMap[v.id]) - new Date()) / 86400000)
@@ -443,58 +449,98 @@
 
                     // Cách tính lương
                     const luongTypeCell = document.createElement('td')
-                    const luongTypeSelect = document.createElement('select')
-                    luongTypeSelect.style.cssText = 'width:140px;padding:6px 8px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px;color:#1a1a2e;background:white'
-                    ;[['khoan_chuyen', 'Khoán chuyến'], ['phan_tram_doanh_thu', '% Doanh thu']].forEach(([val, text]) => {
-                        const opt = document.createElement('option')
-                        opt.value = val
-                        opt.textContent = text
-                        if (val === (v.cach_tinh_luong || 'khoan_chuyen')) opt.selected = true
-                        luongTypeSelect.appendChild(opt)
-                    })
-                    luongTypeCell.appendChild(luongTypeSelect)
+                    if (currentRole === 'supervisor') {
+                        const modeLabel = { khoan_chuyen: 'Khoán chuyến', phan_tram_doanh_thu: '% Doanh thu' }
+                        luongTypeCell.textContent = modeLabel[v.cach_tinh_luong || 'khoan_chuyen'] || v.cach_tinh_luong || '-'
+                    } else {
+                        const luongTypeSelect = document.createElement('select')
+                        luongTypeSelect.style.cssText = 'width:140px;padding:6px 8px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px;color:#1a1a2e;background:white'
+                        ;[['khoan_chuyen', 'Khoán chuyến'], ['phan_tram_doanh_thu', '% Doanh thu']].forEach(([val, text]) => {
+                            const opt = document.createElement('option')
+                            opt.value = val
+                            opt.textContent = text
+                            if (val === (v.cach_tinh_luong || 'khoan_chuyen')) opt.selected = true
+                            luongTypeSelect.appendChild(opt)
+                        })
+
+                        const giaTriInput = document.createElement('input')
+                        giaTriInput.type = 'text'
+                        giaTriInput.style.cssText = 'width:90px;padding:6px 8px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px'
+                        const giaTriSuffix = document.createElement('span')
+                        giaTriSuffix.style.cssText = 'color:var(--text-muted);font-size:13px'
+
+                        luongTypeSelect.addEventListener('change', async () => {
+                            const newMode = luongTypeSelect.value
+                            giaTriInput.value = ''
+                            giaTriInput.dataset.rawValue = ''
+                            giaTriSuffix.textContent = newMode === 'khoan_chuyen' ? 'đ' : '%'
+                            const { error } = await sb.from('xe').update({ cach_tinh_luong: newMode, gia_tri_luong: 0 }).eq('id', v.id)
+                            if (error) showToast('Lỗi: ' + error.message, 'error')
+                        })
+                        giaTriInput.addEventListener('blur', async () => {
+                            const raw = giaTriInput.dataset.rawValue || giaTriInput.value.replace(/\./g, '')
+                            const val = Number(raw) || 0
+                            if (luongTypeSelect.value === 'phan_tram_doanh_thu' && (val < 0 || val > 100)) {
+                                showToast('% lương phải từ 0 đến 100', 'error')
+                                return
+                            }
+                            const { error } = await sb.from('xe').update({ gia_tri_luong: val }).eq('id', v.id)
+                            if (error) showToast('Lỗi: ' + error.message, 'error')
+                        })
+                        luongTypeCell.appendChild(luongTypeSelect)
+
+                        // Giá trị cell (owner mode — created here, appended after)
+                        const initMode = v.cach_tinh_luong || 'khoan_chuyen'
+                        const rawVal = String(v.gia_tri_luong || 0)
+                        giaTriInput.dataset.rawValue = rawVal
+                        if (initMode === 'khoan_chuyen') {
+                            giaTriInput.value = rawVal.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+                            giaTriSuffix.textContent = 'đ'
+                        } else {
+                            giaTriInput.value = rawVal
+                            giaTriSuffix.textContent = '%'
+                        }
+                        addDotFormat(giaTriInput)
+
+                        const giaTriWrap = document.createElement('div')
+                        giaTriWrap.style.cssText = 'display:flex;align-items:center;gap:4px'
+                        giaTriWrap.append(giaTriInput, giaTriSuffix)
+                        const giaTriCell = document.createElement('td')
+                        giaTriCell.appendChild(giaTriWrap)
+                        row.appendChild(luongTypeCell)
+                        row.appendChild(giaTriCell)
+                        addCell(row, driver ? driver.full_name : '-')
+                        const statusCell = document.createElement('td')
+                        const status = document.createElement('span')
+                        status.className = statusLabels[v.trang_thai] ? 'status status-' + v.trang_thai : 'status'
+                        status.textContent = statusLabels[v.trang_thai] || v.trang_thai || '-'
+                        statusCell.appendChild(status)
+                        row.appendChild(statusCell)
+                        const actionCell = document.createElement('td')
+                        const actions = document.createElement('div')
+                        actions.style.display = 'flex'
+                        actions.style.gap = '6px'
+                        actions.style.flexWrap = 'wrap'
+                        actions.append(
+                            createButton('Đổi TT', 'btn', () => changeStatus(v.id, v.trang_thai, v.tai_xe_id)),
+                            createButton('🔧 Bảo dưỡng', 'btn btn-warning', () => openMaintenanceModal(v.id, v.bien_so || '')),
+                            createButton('📋 Chuyến', 'btn btn-success', () => openTripsModal(v.id, v.bien_so || '')),
+                            createButton('Xóa', 'btn btn-danger', () => deleteVehicle(v.id, v.bien_so || ''))
+                        )
+                        actionCell.appendChild(actions)
+                        row.appendChild(actionCell)
+                        tbody.appendChild(row)
+                        return  // row fully built for owner; skip rest of forEach body
+                    }
                     row.appendChild(luongTypeCell)
 
-                    // Giá trị
+                    // Giá trị (supervisor: plain text)
                     const giaTriCell = document.createElement('td')
-                    const giaTriWrap = document.createElement('div')
-                    giaTriWrap.style.cssText = 'display:flex;align-items:center;gap:4px'
-                    const giaTriInput = document.createElement('input')
-                    giaTriInput.type = 'text'
-                    giaTriInput.style.cssText = 'width:90px;padding:6px 8px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px'
-                    const giaTriSuffix = document.createElement('span')
-                    giaTriSuffix.style.cssText = 'color:var(--text-muted);font-size:13px'
-                    const initMode = v.cach_tinh_luong || 'khoan_chuyen'
-                    const rawVal = String(v.gia_tri_luong || 0)
-                    giaTriInput.dataset.rawValue = rawVal
-                    if (initMode === 'khoan_chuyen') {
-                        giaTriInput.value = rawVal.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-                        giaTriSuffix.textContent = 'đ'
-                    } else {
-                        giaTriInput.value = rawVal
-                        giaTriSuffix.textContent = '%'
-                    }
-                    addDotFormat(giaTriInput)
-                    luongTypeSelect.addEventListener('change', async () => {
-                        const newMode = luongTypeSelect.value
-                        giaTriInput.value = ''
-                        giaTriInput.dataset.rawValue = ''
-                        giaTriSuffix.textContent = newMode === 'khoan_chuyen' ? 'đ' : '%'
-                        const { error } = await sb.from('xe').update({ cach_tinh_luong: newMode, gia_tri_luong: 0 }).eq('id', v.id)
-                        if (error) showToast('Lỗi: ' + error.message, 'error')
-                    })
-                    giaTriInput.addEventListener('blur', async () => {
-                        const raw = giaTriInput.dataset.rawValue || giaTriInput.value.replace(/\./g, '')
-                        const val = Number(raw) || 0
-                        if (luongTypeSelect.value === 'phan_tram_doanh_thu' && (val < 0 || val > 100)) {
-                            showToast('% lương phải từ 0 đến 100', 'error')
-                            return
-                        }
-                        const { error } = await sb.from('xe').update({ gia_tri_luong: val }).eq('id', v.id)
-                        if (error) showToast('Lỗi: ' + error.message, 'error')
-                    })
-                    giaTriWrap.append(giaTriInput, giaTriSuffix)
-                    giaTriCell.appendChild(giaTriWrap)
+                    const initModeSup = v.cach_tinh_luong || 'khoan_chuyen'
+                    const giaTriVal = v.gia_tri_luong || 0
+                    giaTriCell.textContent = initModeSup === 'khoan_chuyen'
+                        ? formatMoney(giaTriVal)
+                        : giaTriVal + '%'
                     row.appendChild(giaTriCell)
 
                     addCell(row, driver ? driver.full_name : '-')
@@ -506,18 +552,9 @@
                     statusCell.appendChild(status)
                     row.appendChild(statusCell)
 
+                    // supervisor path: only read-only action
                     const actionCell = document.createElement('td')
-                    const actions = document.createElement('div')
-                    actions.style.display = 'flex'
-                    actions.style.gap = '6px'
-                    actions.style.flexWrap = 'wrap'
-                    actions.append(
-                        createButton('Đổi TT', 'btn', () => changeStatus(v.id, v.trang_thai, v.tai_xe_id)),
-                        createButton('🔧 Bảo dưỡng', 'btn btn-warning', () => openMaintenanceModal(v.id, v.bien_so || '')),
-                        createButton('📋 Chuyến', 'btn btn-success', () => openTripsModal(v.id, v.bien_so || '')),
-                        createButton('Xóa', 'btn btn-danger', () => deleteVehicle(v.id, v.bien_so || ''))
-                    )
-                    actionCell.appendChild(actions)
+                    actionCell.appendChild(createButton('📋 Chuyến', 'btn btn-success', () => openTripsModal(v.id, v.bien_so || '')))
                     row.appendChild(actionCell)
 
                     tbody.appendChild(row)
@@ -886,7 +923,7 @@
             const { data } = await sb
                 .from('notify_settings')
                 .select('notify_new_trip, notify_complete, notify_expense, notify_maintenance')
-                .eq('user_id', ownerProfileId)
+                .eq('user_id', currentUserId)
                 .maybeSingle()
             document.getElementById('notif-new-trip').checked    = data ? data.notify_new_trip    : true
             document.getElementById('notif-complete').checked     = data ? data.notify_complete     : true
@@ -895,9 +932,8 @@
         }
 
         async function saveNotifySetting(key, value) {
-            console.log('saveNotifySetting', key, value, ownerProfileId)
             await sb.from('notify_settings')
-                .upsert({ user_id: ownerProfileId, [key]: value }, { onConflict: 'user_id' })
+                .upsert({ user_id: currentUserId, [key]: value }, { onConflict: 'user_id' })
         }
 
         function toggleNotifyPanel() {
@@ -961,7 +997,7 @@
                     addCell(row, r.km_den !== null && r.km_den !== undefined ? r.km_den : 'Không giới hạn')
                     addCell(row, formatMoney(r.so_tien))
                     const actionCell = document.createElement('td')
-                    const delBtn = createButton('Xóa', 'btn btn-danger', () => deleteKmRate(r.id))
+                    const delBtn = createButton('Xóa', 'btn btn-danger owner-only', () => deleteKmRate(r.id))
                     delBtn.style.padding = '4px 8px'
                     delBtn.style.fontSize = '12px'
                     actionCell.appendChild(delBtn)
@@ -1021,13 +1057,17 @@
 
         async function init() {
             setVehicleMessage('Đang tải ...')
-            const auth = await requireRole(sb, 'owner')
+            const auth = await requireRole(sb, ['owner', 'supervisor'])
             if (!auth) return
-            ownerProfileId = auth.profile.id
+            currentRole = auth.profile.role
+            if (currentRole === 'owner') document.body.classList.add('role-owner')
+            currentUserId = auth.profile.id
+            const effectiveOwnerId = currentRole === 'supervisor' ? auth.profile.owner_id : auth.profile.id
+            ownerProfileId = effectiveOwnerId
             populateLoaiXeSelect('new-loai')
             populateLoaiXeSelect('km-loai-xe')
             loadNotifySettings()
-            setupPushNotifications(ownerProfileId)
+            setupPushNotifications(currentUserId)
             await loadDrivers()
             await loadVehicles()
             await loadKmRates()
