@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Fleet management app cho công ty vận tải Ea Kar — owner theo dõi chuyến/doanh thu/lương, driver nhập chuyến và upload ảnh hóa đơn. Khởi nguồn là dự án học code (`bai*`); các bài tập cũ `bai1-9.html` đã xóa, chỉ còn `bai10.html` là landing/auth thực tế. App chạy trên `bai10.html` + 7 trang admin/driver: `owner-dashboard.html`, `driver.html`, `vehicles.html`, `luong-thang.html`, `luong-cua-toi.html`, `driver-page.html`, `trip-detail.html`.
+Fleet management app cho công ty vận tải Ea Kar — owner theo dõi chuyến/doanh thu/lương, driver nhập chuyến và upload ảnh hóa đơn. Khởi nguồn là dự án học code (`bai*`); các bài tập cũ `bai1-9.html` đã xóa, chỉ còn `bai10.html` là landing/auth thực tế. App chạy trên 2 trang auth (`bai10.html` landing/Google OAuth, `login-sdt.html` SMS OTP login) + 7 trang admin/driver: `owner-dashboard.html`, `driver.html`, `vehicles.html`, `luong-thang.html`, `luong-cua-toi.html`, `driver-page.html`, `trip-detail.html`.
 
 - Stack: Vanilla HTML/CSS/JS + Supabase (Postgres + Auth + Storage + Realtime) + Vercel
 - Live: https://fucking-learning-code.vercel.app
@@ -35,6 +35,14 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - `loadStats()`: query `trips`/`users` công khai cho landing stats (sẽ break nếu bật RLS)
 - Local `formatStatNumber` ≠ `shared.formatMoney`: bai10 hiện dạng rút gọn `1.2B`/`345M`/`12K`
 - OAuth `redirectTo`: `window.location.origin + '/bai10.html'`
+- `bai10.html` CHƯA có link tới `login-sdt.html`
+
+#### `login-sdt.html` — driver SMS OTP login
+- Standalone page, **KHÔNG dùng `shared.js`** — chỉ `style.css` (`.btn`/`.btn-full`/`.form-group`/`.toast`) + local `showToast`
+- 2 step toggle bằng class `.step-container.active`: step1 nhập SĐT → `POST /api/send-otp`; step2 nhập mã 6 số → `POST /api/verify-otp`
+- SĐT sanitize client bằng `.replace(/\D/g, '').trim()` (chỉ giữ số, validate độ dài 9–11). State `currentSdt` được giữ ở module level giữa 2 bước.
+- Verify OK → `localStorage.setItem('driver_token', token)` → redirect `driver-page.html`. `driver-page.html` `logout()` cũng `localStorage.removeItem('driver_token')` + redirect về `login-sdt.html`
+- **Wired into auth**: Đăng nhập bằng SMS hoàn toàn tương thích với `requireRole` trong `shared.js` (gọi `/api/verify-session` để kiểm tra token hợp lệ và nạp profile). Các trang admin/driver khác (`luong-cua-toi.html`, `trip-detail.html`) cũng tự động hỗ trợ đăng nhập này.
 
 #### `owner-dashboard.html` — owner xem báo cáo + tạo chuyến
 - Module-level vars: `currentOwnerProfileId`, `tripsChannel`, `xeList`, `driverList`, `pendingTripData`
@@ -196,7 +204,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 #### `sw.js` + `manifest.json` — PWA
 - Chỉ register từ `bai10.html`
 - STATIC_ASSETS: `bai10.html`, `style.css`, `manifest.json`, icons — **`shared.js` và tất cả admin pages không được pre-cache**, chỉ dynamic-cache khi navigate tới
-- Khi deploy thay đổi cho bất kỳ file nào trong STATIC_ASSETS, phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v24`) để invalidate cache cũ
+- Khi deploy thay đổi cho bất kỳ file nào trong STATIC_ASSETS, phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v26`) để invalidate cache cũ
 - Push handler + notificationclick handler (focus tab cũ hoặc mở tab mới tới URL trong `notification.data.url`)
 
 ---
@@ -307,12 +315,13 @@ Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"typ
   - `'maintenance'`: `{ driver_name, bien_so, bo_phan, chi_phi, trip_id }`
   
   Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`.
-- **`api/send-otp.js`** — POST `{ sdt }` (SĐT `0901234567`, normalize chỉ `.trim()`). Gửi OTP 6 số cho driver login qua SMS. **Feature đang làm dở** — đã có endpoint gửi mã + verify (`verify-otp.js`); CHƯA có frontend wiring, CHƯA tạo bảng DB (`otp_codes`, `sessions`), SpeedSMS chưa tích hợp. Flow: validate sdt → check `users` (phải tồn tại + `role='driver'`, nếu không trả 404/403) → rate-limit lớp 1 (60s giữa 2 lần xin mã) → rate-limit lớp 2 (≤5 mã/24h) → set `used=true` mọi mã cũ → tạo mã bằng `crypto.randomInt(100000, 1000000)` (crypto-secure, luôn 6 số) → INSERT `otp_codes` → gọi `sendSms()`. **TUYỆT ĐỐI không trả `code` về client** (chỉ `{ ok: true }`). Tradeoff đã biết: 404/403/200 khác nhau → cho phép phone enumeration (chấp nhận để UX báo lỗi rõ). Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SPEEDSMS_API_KEY` (chưa cấu hình).
+- **`api/send-otp.js`** — POST `{ sdt }` (SĐT `0901234567`, normalize chỉ `.trim()`). Gửi OTP 6 số cho driver login qua SMS. Đã có frontend wiring (`login-sdt.html`), verify (`verify-otp.js`), và session check (`verify-session.js`). SpeedSMS chưa tích hợp. Flow: validate sdt → check `users` (phải tồn tại + `role='driver'`, nếu không trả 404/403) → rate-limit lớp 1 (60s giữa 2 lần xin mã) → rate-limit lớp 2 (≤5 mã/24h) → set `used=true` mọi mã cũ → tạo mã bằng `crypto.randomInt(100000, 1000000)` (crypto-secure, luôn 6 số) → INSERT `otp_codes` → gọi `sendSms()`. **TUYỆT ĐỐI không trả `code` về client** (chỉ `{ ok: true }`). Tradeoff đã biết: 404/403/200 khác nhau → cho phép phone enumeration (chấp nhận để UX báo lỗi rõ). Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SPEEDSMS_API_KEY` (chưa cấu hình).
   - **Phụ thuộc CHƯA tạo**: bảng `otp_codes` chưa tồn tại trên Supabase — phải tạo trước khi endpoint chạy. Schema đề xuất: `(id uuid PK, sdt text, code text, expires_at timestamptz, used bool DEFAULT false, wrong_attempts int DEFAULT 0, created_at timestamptz DEFAULT now())`. Cột `created_at DEFAULT now()` bắt buộc — cả 2 rate-limit dựa vào nó và code không insert thủ công.
   - **SpeedSMS chưa tích hợp**: `sendSms(sdt, code)` hiện chỉ `console.log` mã ra Vercel logs (đọc log để test dev), bọc try/catch nên fail không vỡ flow. Khi có API key/docs thì cắm vào hàm này, dùng `process.env.SPEEDSMS_API_KEY` (KHÔNG hardcode).
 - **`api/verify-otp.js`** — POST `{ sdt, code }`. Verify OTP → tạo session token cho driver login. Flow: validate (`sdt` phải `typeof === 'string'`; `code = String(rawCode ?? '').trim()` rồi match `/^\d{6}$/`) → query `otp_codes` mã chưa dùng mới nhất (`.eq('used', false).order('created_at', { ascending: false }).limit(1)`, access `rows[0]` — KHÔNG `.maybeSingle()`) → check `expires_at` < now → check `wrong_attempts >= 5` → so sánh `code` (sai → UPDATE `wrong_attempts + 1` theo kiểu đọc-rồi-ghi, **không atomic**) → query `users.id` by `sdt` (`.maybeSingle()`) → mark `used=true` → tạo token `crypto.randomBytes(32).toString('hex')` → INSERT `sessions {token, user_id}` → trả `{ ok: true, token }`. **Session KHÔNG có expiry** (chủ ý — verify-session cũng không check). Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
   - **Phụ thuộc CHƯA tạo**: bảng `sessions` chưa tồn tại trên Supabase — `CREATE TABLE sessions (token text PRIMARY KEY, user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE, created_at timestamptz DEFAULT now())`. FK phải → `public.users` (KHÔNG `auth.users`); `token` phải PK/UNIQUE để verify-session `.maybeSingle()` an toàn.
   - **`users.sdt` cần UNIQUE**: lookup ở step query `users.id` dùng `.maybeSingle()` — nếu 2 driver trùng `sdt` sẽ vỡ. (NULL được phép trùng trong UNIQUE Postgres nên owner row `sdt=NULL` không sao.)
+- **`api/verify-session.js`** — POST `{ token }`. Verify session token của driver và trả về thông tin user profile tương ứng. Flow: validate `token` → query `sessions` kết hợp join `users!user_id(id, role, full_name, sdt, owner_id)` để lấy profile của user đang liên kết với token session đó. Không kiểm tra expiry. Trả về thông tin profile định dạng JSON: `{ id, role, full_name, sdt, owner_id }`. Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
 
 ### Vercel environment variables (tổng hợp)
 
