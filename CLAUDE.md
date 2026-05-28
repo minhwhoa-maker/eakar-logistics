@@ -14,7 +14,7 @@ Fleet management app cho công ty vận tải Ea Kar — owner theo dõi chuyế
   eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imljd210cWZwYmVmbnRmeGJvb2ZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5Mzg3NzgsImV4cCI6MjA5MjUxNDc3OH0.N1gsPt4eZav2LL2XDttqlsAB06b1UzXb4bFTMi3K8NM
   ```
 
-## Workflow
+## Commands
 
 Không có build step, không có test runner, không có lint. Quy trình:
 
@@ -60,6 +60,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - `#btn-notify` → `#notify-panel` (fixed top:64px right:16px, click-outside để đóng), 4 toggle (notify_new_trip / notify_complete / notify_expense / notify_maintenance), load/save qua `notify_settings`
 - `setupPushNotifications(userId)` chạy mỗi lần login
 - JS dependencies (`VAPID_PUBLIC_KEY`, `urlBase64ToUint8Array`, `setupPushNotifications`, `loadNotifySettings`, `saveNotifySetting`, `toggleNotifyPanel`) định nghĩa **local trong mỗi file** (không phải `shared.js`); dùng `currentUserId` (là `auth.profile.id` — luôn là ID của user đang đăng nhập, **không phải** `effectiveOwnerId`) để tránh ghi đè notification settings của admin khi supervisor dùng
+- Khi copy notify panel + push setup sang page mới, lấy từ `owner-dashboard.html` (canonical) — không từ pages khác (có thể đã drift theo thời gian)
 
 **Tạo chuyến** (`#new-trip-modal`)
 - 2 mode qua tab buttons (`tab-co-dinh`/`tab-theo-km`) + hidden `#nt-loai-luong`; `setTripTab(mode)` toggle UI
@@ -254,6 +255,8 @@ async function initPage() {
 setupLogoutListener(sb)
 initPage()
 ```
+
+Một số page khai `let currentRole = null` (module-level), gán `currentRole = auth.profile.role` ngay sau `requireRole()`. Hiện cả 4 page owner đều có, nhưng chỉ `vehicles.html` thực sự dùng nó cho runtime branching (conditional cell render — supervisor vs owner). 3 page kia chỉ dùng để gate `body.role-owner`, tương đương `if (auth.profile.role === 'owner')` inline — biến là dead-weight do copy-paste, không bắt buộc. Page mới: chỉ khai khi cần branching ngoài tầm với của CSS `.owner-only`.
 
 ### Số dư tạm ứng (Phase 2)
 

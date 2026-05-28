@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npm install *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git -C c:/Users/PC/fucking-learning-code ls-files)",
+      "Bash(grep -iE 'backup|recovery|\\\\.txt$|\\\\.env')"
     ]
   }
 }

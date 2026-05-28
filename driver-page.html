@@ -1429,8 +1429,19 @@
 
     // ── Auth ──────────────────────────────────────────────────────────
     async function logout() {
-        localStorage.removeItem('driver_token')
-        window.location.href = 'login-sdt.html'
+        // Ưu tiên check Supabase session trước (tránh stale driver_token)
+        const { data } = await sb.auth.getSession()
+        if (data?.session) {
+            // Google OAuth login — sb module-level, không tạo client mới
+            // setupLogoutListener sẽ redirect bai10 khi nhận SIGNED_OUT
+            localStorage.removeItem('driver_token') // xóa luôn nếu có stale token
+            await sb.auth.signOut()
+            // không cần redirect — setupLogoutListener lo
+        } else {
+            // SMS login
+            localStorage.removeItem('driver_token')
+            window.location.href = 'login-sdt.html'
+        }
     }
 
     async function initPage() {
