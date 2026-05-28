@@ -90,11 +90,11 @@
                             <th>Tên tài xế</th>
                             <th>Biển số xe</th>
                             <th>Lương CB</th>
-                            <th>Σ chuyến</th>
+                            <th>Chuyến</th>
                             <th>Phụ cấp</th>
                             <th>Thưởng</th>
-                            <th>Σ tạm ứng</th>
-                            <th>Σ hoàn ứng</th>
+                            <th>Tạm ứng</th>
+                            <th>Hoàn ứng</th>
                             <th>Khấu trừ</th>
                             <th>THỰC LĨNH</th>
                             <th id="th-sua" class="owner-only">Sửa</th>
@@ -304,6 +304,7 @@
             const luongRow = luongMap[d.id]
             const trips = tripResults[i]?.data || []
 
+            const soChuyen = trips.length
             const tong_luong_chuyen = trips.reduce((s, t) => s + (Number(t.luong_chuyen) || 0), 0)
             const tong_tam_ung = trips.reduce((s, t) => s + (Number(t.tam_ung) || 0), 0)
             const tong_hoan_ung = trips.reduce((s, t) => s + (Number(t.hoan_ung) || 0), 0)
@@ -321,7 +322,7 @@
                 d.full_name || '-',
                 xe ? formatBienSo(xe.bien_so) : '—',
                 luongRow?.ap_dung_luong_co_ban ? formatMoney(luong_cb) : '—',
-                formatMoney(tong_luong_chuyen),
+                `${soChuyen} chuyến / ${formatMoney(tong_luong_chuyen)}`,
                 formatMoney(phu_cap),
                 formatMoney(thuong),
                 formatMoney(tong_tam_ung),

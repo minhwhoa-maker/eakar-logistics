@@ -23,6 +23,8 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - **Deploy**: `git push origin main` → Vercel auto-deploy.
 - **DB schema changes**: vào Supabase dashboard project `icwmtqfpbefntfxboofr` chỉnh tay (SQL editor hoặc Table editor).
 - **api/ dependencies**: `npm install` cài `web-push` + `@supabase/supabase-js` cho Vercel serverless functions. Không cần chạy lại khi chỉ sửa HTML/CSS/JS frontend.
+- **Line endings**: repo dùng **CRLF** (Windows). Khi append/overwrite file qua tool tự động, giữ nguyên CRLF; mixed-EOL trong cùng file gây git diff noise toàn file.
+- **Test SMS OTP trong dev**: SpeedSMS chưa tích hợp → `api/send-otp.js` chỉ `console.log` mã ra **Vercel function logs**. Trigger send từ `login-sdt.html`, mở Vercel dashboard → Logs → tìm log của `send-otp` để đọc mã 6 số rồi nhập step 2.
 
 ## Architecture
 
@@ -178,8 +180,9 @@ Không có build step, không có test runner, không có lint. Quy trình:
 
 #### `luong-thang.html` — owner quản lý bảng lương tháng + PDF
 - Toggle `cho_phep_xem_luong` trên `users` (owner row) cho phép driver xem lương
-- `fetchLuongData(thangStr)` dùng chung cho render + PDF: select drivers, query xe (`.select('id, bien_so')`), upsert `luong_thang` (auto-INSERT nếu chưa có, `luong_co_ban_snapshot: 0`, `ap_dung_luong_co_ban: false`), query trips theo tháng
-- Bảng 12 cột: Tên | Biển số | Lương CB | Σ chuyến | Phụ cấp | Thưởng | Σ tạm ứng | Σ hoàn ứng | Khấu trừ | THỰC LĨNH | Sửa | In phiếu
+- `fetchLuongData(thangStr)` chỉ **fetch raw**: drivers, xe (`.select('id, bien_so')`), upsert `luong_thang` (auto-INSERT nếu chưa có, `luong_co_ban_snapshot: 0`, `ap_dung_luong_co_ban: false`), query trips theo tháng. **Per-driver aggregation (Σ luong_chuyen, Σ tam_ung, Σ hoan_ung, soChuyen, thuc_linh) compute trong `loadLuong()` forEach** — không nằm trong fetchLuongData. PDF render (`printPayslip`/`printAllPayslips`) cũng gọi `fetchLuongData` rồi loop tính lại trước khi build payslip.
+- Bảng 12 cột: Tên | Biển số | Lương CB | Chuyến | Phụ cấp | Thưởng | Tạm ứng | Hoàn ứng | Khấu trừ | THỰC LĨNH | Sửa | In phiếu
+- Cột Chuyến hiển thị `${soChuyen} chuyến / ${formatMoney(tong_luong_chuyen)}` (đếm + tổng tiền cùng cell); PDF payslip giữ label `Lương chuyến (${trips.length} chuyến)` riêng
 - Lương CB: hiện `formatMoney(luong_co_ban_snapshot)` khi `ap_dung_luong_co_ban=true`, còn lại hiện `'—'`
 - Công thức: `luong_cb_apply = ap_dung_luong_co_ban ? luong_co_ban_snapshot : 0`; `thuc_linh = luong_cb_apply + tong_luong_chuyen + phu_cap + thuong - tong_tam_ung + tong_hoan_ung - khau_tru`
 - THỰC LĨNH highlight: `idx === 9` trong cellValues (0-indexed)
@@ -205,7 +208,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - Auth: `requireRole(sb, 'owner')` — CHỈ owner gốc, supervisor không vào được
 - Chức năng: danh sách supervisor (query `users` `.eq('role','supervisor').eq('owner_id', ownerProfileId)`), thêm (INSERT với `role:'supervisor'`), xóa có confirm
 - Supervisor login qua Google OAuth → `bai10.redirectByRole` redirect sang `owner-dashboard.html`
-- **Phase A — read-only mềm**: supervisor thấy đúng fleet của admin (4 trang: owner-dashboard, driver, vehicles, luong-thang) nhưng mọi nút tạo/sửa/xóa bị ẩn bởi `applyReadOnlyForSupervisor()` gọi sau init. RLS chưa bật → đây là phòng thủ UI thuần, chưa phải server-side. Phase B (RLS) là milestone riêng.
+- **Phase A — read-only mềm**: supervisor thấy đúng fleet của admin (4 trang: owner-dashboard, driver, vehicles, luong-thang) nhưng mọi nút tạo/sửa/xóa bị ẩn bằng **CSS role-gating pattern** (`.owner-only` ẩn mặc định trong `style.css`; JS thêm `body.role-owner` cho owner để gỡ ẩn) — xem chi tiết trong section CSS conventions. Tránh FOUC vì element ẩn ngay khi parse, không chờ JS hide-after-render. `vehicles.html` còn vài dynamic cell (`loadVehicles()` row builder) vẫn dùng conditional `currentRole === 'supervisor'` branches cho plate/salary/action cells — chủ ý không migrate sang `.owner-only` (post-auth render nên không có FOUC, rewrite risky vì intertwined với inline-salary-edit). RLS chưa bật → đây là phòng thủ UI thuần, chưa phải server-side. Phase B (RLS) là milestone riêng.
 - Pattern effectiveOwnerId: `supervisor ? profile.owner_id : profile.id` — gán vào biến owner-id của trang để mọi query `.eq('owner_id', ...)` tự đúng fleet admin
 - `currentUserId = auth.profile.id` (ID của người đang đăng nhập) dùng riêng cho `setupPushNotifications` và `loadNotifySettings`/`saveNotifySetting` — không dùng `effectiveOwnerId` để tránh đụng notification settings của admin
 
@@ -239,9 +242,14 @@ Mỗi page admin (driver/vehicles/owner-dashboard) bắt đầu với:
 ```js
 const sb = createSb()
 async function initPage() {
-    const auth = await requireRole(sb, 'owner')  // hoặc 'driver'
+    // single role: requireRole(sb, 'owner') hoặc requireRole(sb, 'driver')
+    // multi-role (Phase A supervisor đọc page owner): truyền array
+    const auth = await requireRole(sb, ['owner', 'supervisor'])
     if (!auth) return
-    // ... load data
+    const profile = auth.profile
+    const effectiveOwnerId = profile.role === 'supervisor' ? profile.owner_id : profile.id
+    if (profile.role === 'owner') document.body.classList.add('role-owner')
+    // ... load data với .eq('owner_id', effectiveOwnerId)
 }
 setupLogoutListener(sb)
 initPage()
@@ -296,7 +304,8 @@ Khi user case (b) login lần đầu, bai10 thấy email đã có → skip inser
   - **h2** `style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%)"`: tách khỏi flex flow, căn giữa thật sự. `position:sticky` của `.header` (style.css) là containing block — **không cần thêm `position:relative`**
   - **right-zone** `<div style="display:flex; align-items:center; gap:8px;">`: dùng **dual `header-nav-desktop` wrapper**: `[header-nav-desktop: nav/action buttons]` + `[🔔 btn-notify standalone]` + `[header-nav-desktop: Đăng xuất]`. Pages không có nav buttons bỏ wrapper đầu; pages không có 🔔 bỏ luôn phần đó.
   - Mobile (≤600px): `header-nav-desktop` ẩn (`display:none !important`), chỉ hamburger-btn và 🔔 hiện. `.header-text` trong h2 cũng ẩn — chỉ emoji hiện. `style.css` có `@media (max-width:600px)` override padding/font-size cho `.header`, `.header h2`, `.header > div` — **không cần thêm local `<style>` block** trong từng page cho mobile header.
-- **Role-gating pattern** (supervisor/owner): `.owner-only { display:none !important }` mặc định trong style.css; `body.role-owner .owner-only { display:revert !important }` gỡ ẩn cho owner. JS thêm `document.body.classList.add('role-owner')` ngay sau khi gán `currentRole`, trước mọi render. Hamburger menu `<a>` cần rule scoped riêng `body.role-owner .hamburger-menu .owner-only { display:block !important }` vì `revert` về UA default `inline`. `.supervisor-only` là ngược lại: hiện mặc định, ẩn khi `body.role-owner`. Feature gating theo role mới dùng pattern này, KHÔNG dùng `style.display='none'` trong JS.
+- **Role-gating pattern** (supervisor/owner): `.owner-only { display:none !important }` mặc định trong style.css; `body.role-owner .owner-only { display:revert !important }` gỡ ẩn cho owner. JS thêm `document.body.classList.add('role-owner')` ngay sau khi gán `currentRole`, trước mọi render. `.supervisor-only` là ngược lại: hiện mặc định, ẩn khi `body.role-owner`. Feature gating theo role mới dùng pattern này, KHÔNG dùng `style.display='none'` trong JS.
+- **`display: revert` gotcha**: `revert` rollback PAST mọi author rule về **UA default** của element. `<a>`/`<span>` UA default là `inline`, `<div>` là `block`. Vậy nên `.hamburger-menu a { display: block }` (author rule) bị `revert` xóa → element thành `inline` → vỡ layout menu. Bất cứ khi nào dùng `revert` để gỡ ẩn `.owner-only`, nếu element nằm trong container có rule `display: block`/`flex`/etc thì phải scope lại: `body.role-owner .hamburger-menu .owner-only { display: block !important }`. Specificity (0,3,1) thắng (0,2,1). Buttons (`.btn` là `inline-flex`) thường OK vì single text-node child → flex chỉ thoái về `inline-block` không vỡ visual.
 
 ### Notification pattern (showToast)
 Tất cả page admin/driver dùng `showToast()` cho user feedback. Mỗi file tự định nghĩa hàm này ở đầu `<script>` (không phải trong `shared.js`) và cần `<div class="toast" id="toast"></div>` trước `</body>`:
