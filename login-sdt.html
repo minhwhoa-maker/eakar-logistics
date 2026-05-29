@@ -84,6 +84,7 @@
                 <div id="step1-error" class="error-message"></div>
             </div>
             <button id="btn-send" class="btn btn-full">Gửi mã OTP</button>
+            <a id="link-other" class="back-link">Đăng nhập bằng phương thức khác</a>
         </div>
 
         <!-- Step 2: Nhập OTP -->
@@ -230,6 +231,11 @@
                 btnVerify.disabled = false;
                 btnVerify.textContent = 'Xác nhận';
             }
+        });
+
+        // Quay về trang chủ
+        document.getElementById('link-other').addEventListener('click', () => {
+            window.location.href = 'bai10.html';
         });
 
         // Quay lại bước 1
