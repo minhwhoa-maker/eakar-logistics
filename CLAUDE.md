@@ -37,7 +37,8 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - `loadStats()`: query `trips`/`users` công khai cho landing stats (sẽ break nếu bật RLS)
 - Local `formatStatNumber` ≠ `shared.formatMoney`: bai10 hiện dạng rút gọn `1.2B`/`345M`/`12K`
 - OAuth `redirectTo`: `window.location.origin + '/bai10.html'`
-- `bai10.html` CHƯA có link tới `login-sdt.html`
+- `bai10.html` có nút "Đăng nhập bằng số Zalo" → redirect `login-sdt.html`; `login-sdt.html` có link "Đăng nhập bằng phương thức khác" → redirect `bai10.html`
+- Static assets: `logo/logo.PNG` (header logo, max-width 220px), `logo/zalo.png` (icon nút Zalo, 20×20px). Case-sensitive trên Linux/Vercel — `logo.PNG` phải viết hoa đuôi
 
 #### `login-sdt.html` — driver SMS OTP login
 - Standalone page, **KHÔNG dùng `shared.js`** — chỉ `style.css` (`.btn`/`.btn-full`/`.form-group`/`.toast`) + local `showToast`
