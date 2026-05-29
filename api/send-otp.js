@@ -1,19 +1,12 @@
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
 
-async function sendZaloZns(sdt, code) {
-    if (!process.env.ZALO_ACCESS_TOKEN) {
-        console.log('[DEV] OTP:', code)
-        return
-    }
-
-    const phone = sdt.startsWith('0') ? '84' + sdt.slice(1) : sdt
-
+async function sendZnsWithToken(phone, code, token) {
     const response = await fetch('https://business.openapi.zalo.me/message/template', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'access_token': process.env.ZALO_ACCESS_TOKEN
+            'access_token': token
         },
         body: JSON.stringify({
             phone: phone,
@@ -22,12 +15,48 @@ async function sendZaloZns(sdt, code) {
             tracking_id: `otp_${Date.now()}`
         })
     })
-
     if (!response.ok) throw new Error('Zalo HTTP ' + response.status)
-    const result = await response.json()
-    if (result.error !== 0) {
-        throw new Error(result.message)
+    return response.json()
+}
+
+async function refreshZaloToken() {
+    const response = await fetch('https://oauth.zaloapp.com/v4/oa/access_token', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'secret_key': process.env.ZALO_APP_SECRET
+        },
+        body: new URLSearchParams({
+            grant_type: 'refresh_token',
+            app_id: process.env.ZALO_APP_ID,
+            refresh_token: process.env.ZALO_REFRESH_TOKEN
+        }).toString()
+    })
+    if (!response.ok) throw new Error('Token refresh failed')
+    const data = await response.json()
+    if (!data.access_token) throw new Error('Token refresh failed')
+    process.env.ZALO_ACCESS_TOKEN = data.access_token
+    return data.access_token
+}
+
+async function sendZaloZns(sdt, code) {
+    if (!process.env.ZALO_ACCESS_TOKEN) {
+        console.log('[DEV] OTP:', code)
+        return
     }
+
+    const phone = sdt.startsWith('0') ? '84' + sdt.slice(1) : sdt
+
+    const result = await sendZnsWithToken(phone, code, process.env.ZALO_ACCESS_TOKEN)
+
+    if (result.error === -216) {
+        const newToken = await refreshZaloToken()
+        const retryResult = await sendZnsWithToken(phone, code, newToken)
+        if (retryResult.error !== 0) throw new Error(retryResult.message)
+        return
+    }
+
+    if (result.error !== 0) throw new Error(result.message)
 }
 
 export default async function handler(req, res) {
