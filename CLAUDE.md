@@ -24,7 +24,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - **DB schema changes**: vào Supabase dashboard project `icwmtqfpbefntfxboofr` chỉnh tay (SQL editor hoặc Table editor).
 - **api/ dependencies**: `npm install` cài `web-push` + `@supabase/supabase-js` cho Vercel serverless functions. Không cần chạy lại khi chỉ sửa HTML/CSS/JS frontend.
 - **Line endings**: repo dùng **CRLF** (Windows). Khi append/overwrite file qua tool tự động, giữ nguyên CRLF; mixed-EOL trong cùng file gây git diff noise toàn file.
-- **Test SMS OTP trong dev**: SpeedSMS chưa tích hợp → `api/send-otp.js` chỉ `console.log` mã ra **Vercel function logs**. Trigger send từ `login-sdt.html`, mở Vercel dashboard → Logs → tìm log của `send-otp` để đọc mã 6 số rồi nhập step 2.
+- **Test OTP trong dev**: Khi `ZALO_ACCESS_TOKEN` chưa set → `api/send-otp.js` log `[DEV] OTP: <code>` ra **Vercel function logs**. Trigger send từ `login-sdt.html`, mở Vercel dashboard → Logs → tìm log của `send-otp` để đọc mã 6 số rồi nhập step 2.
 
 ## Architecture
 
@@ -339,9 +339,9 @@ Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"typ
   - `'maintenance'`: `{ driver_name, bien_so, bo_phan, chi_phi, trip_id }`
   
   Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`.
-- **`api/send-otp.js`** — POST `{ sdt }` (SĐT `0901234567`, normalize chỉ `.trim()`). Gửi OTP 6 số cho driver login qua SMS. Đã có frontend wiring (`login-sdt.html`), verify (`verify-otp.js`), và session check (`verify-session.js`). SpeedSMS chưa tích hợp. Flow: validate sdt → check `users` (phải tồn tại + `role='driver'`, nếu không trả 404/403) → rate-limit lớp 1 (60s giữa 2 lần xin mã) → rate-limit lớp 2 (≤5 mã/24h) → set `used=true` mọi mã cũ → tạo mã bằng `crypto.randomInt(100000, 1000000)` (crypto-secure, luôn 6 số) → INSERT `otp_codes` → gọi `sendSms()`. **TUYỆT ĐỐI không trả `code` về client** (chỉ `{ ok: true }`). Tradeoff đã biết: 404/403/200 khác nhau → cho phép phone enumeration (chấp nhận để UX báo lỗi rõ). Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SPEEDSMS_API_KEY` (chưa cấu hình).
+- **`api/send-otp.js`** — POST `{ sdt }` (SĐT `0901234567`, normalize chỉ `.trim()`). Gửi OTP 6 số cho driver login qua Zalo ZNS template `586307`. Đã có frontend wiring (`login-sdt.html`), verify (`verify-otp.js`), và session check (`verify-session.js`). Flow: validate sdt → check `users` (phải tồn tại + `role='driver'`, nếu không trả 404/403) → rate-limit lớp 1 (60s giữa 2 lần xin mã) → rate-limit lớp 2 (≤5 mã/24h) → set `used=true` mọi mã cũ → tạo mã bằng `crypto.randomInt(100000, 1000000)` (crypto-secure, luôn 6 số) → INSERT `otp_codes` → gọi `sendZaloZns()`. **TUYỆT ĐỐI không trả `code` về client** (chỉ `{ ok: true }`). Tradeoff đã biết: 404/403/200 khác nhau → cho phép phone enumeration (chấp nhận để UX báo lỗi rõ). Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `ZALO_ACCESS_TOKEN`.
+  - **Dev mode**: khi `ZALO_ACCESS_TOKEN` chưa set → log `[DEV] OTP: <code>` ra Vercel logs, không gửi ZNS thật.
   - **Phụ thuộc CHƯA tạo**: bảng `otp_codes` chưa tồn tại trên Supabase — phải tạo trước khi endpoint chạy. Schema đề xuất: `(id uuid PK, sdt text, code text, expires_at timestamptz, used bool DEFAULT false, wrong_attempts int DEFAULT 0, created_at timestamptz DEFAULT now())`. Cột `created_at DEFAULT now()` bắt buộc — cả 2 rate-limit dựa vào nó và code không insert thủ công.
-  - **SpeedSMS chưa tích hợp**: `sendSms(sdt, code)` hiện chỉ `console.log` mã ra Vercel logs (đọc log để test dev), bọc try/catch nên fail không vỡ flow. Khi có API key/docs thì cắm vào hàm này, dùng `process.env.SPEEDSMS_API_KEY` (KHÔNG hardcode).
 - **`api/verify-otp.js`** — POST `{ sdt, code }`. Verify OTP → tạo session token cho driver login. Flow: validate (`sdt` phải `typeof === 'string'`; `code = String(rawCode ?? '').trim()` rồi match `/^\d{6}$/`) → query `otp_codes` mã chưa dùng mới nhất (`.eq('used', false).order('created_at', { ascending: false }).limit(1)`, access `rows[0]` — KHÔNG `.maybeSingle()`) → check `expires_at` < now → check `wrong_attempts >= 5` → so sánh `code` (sai → UPDATE `wrong_attempts + 1` theo kiểu đọc-rồi-ghi, **không atomic**) → query `users.id` by `sdt` (`.maybeSingle()`) → mark `used=true` → tạo token `crypto.randomBytes(32).toString('hex')` → INSERT `sessions {token, user_id}` → trả `{ ok: true, token }`. **Session KHÔNG có expiry** (chủ ý — verify-session cũng không check). Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
   - **Phụ thuộc CHƯA tạo**: bảng `sessions` chưa tồn tại trên Supabase — `CREATE TABLE sessions (token text PRIMARY KEY, user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE, created_at timestamptz DEFAULT now())`. FK phải → `public.users` (KHÔNG `auth.users`); `token` phải PK/UNIQUE để verify-session `.maybeSingle()` an toàn.
   - **`users.sdt` cần UNIQUE**: lookup ở step query `users.id` dùng `.maybeSingle()` — nếu 2 driver trùng `sdt` sẽ vỡ. (NULL được phép trùng trong UNIQUE Postgres nên owner row `sdt=NULL` không sao.)
@@ -358,7 +358,7 @@ Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"typ
 | `VAPID_SUBJECT` | `api/notify.js` |
 | `VAPID_PUBLIC_KEY` | `api/notify.js` |
 | `VAPID_PRIVATE_KEY` | `api/notify.js` |
-| `SPEEDSMS_API_KEY` | `api/send-otp.js` (chưa cấu hình — SpeedSMS chưa tích hợp) |
+| `ZALO_ACCESS_TOKEN` | `api/send-otp.js` (Zalo OA access token — bỏ trống để dùng dev mode log) |
 
 ## Database
 

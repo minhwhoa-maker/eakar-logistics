@@ -1,22 +1,33 @@
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
 
-/*
- * ============================================================
- * TODO: SpeedSMS integration — chưa có API key/docs
- * ------------------------------------------------------------
- * Hiện tại CHƯA tích hợp SpeedSMS thật. Trong giai đoạn dev,
- * mã OTP được console.log ra Vercel logs để test thủ công.
- * Khi có API key + docs SpeedSMS:
- *   - Cắm code gọi API vào hàm sendSms() bên dưới.
- *   - Dùng process.env.SPEEDSMS_API_KEY (KHÔNG hardcode key).
- *   - Bỏ / giữ lại console.log tùy nhu cầu debug.
- * ============================================================
- */
-async function sendSms(sdt, code) {
-    // TODO: cắm SpeedSMS API ở đây, dùng process.env.SPEEDSMS_API_KEY
-    // Trong giai đoạn dev: log ra Vercel logs để test
-    console.log('OTP for', sdt, '=', code)
+async function sendZaloZns(sdt, code) {
+    if (!process.env.ZALO_ACCESS_TOKEN) {
+        console.log('[DEV] OTP:', code)
+        return
+    }
+
+    const phone = sdt.startsWith('0') ? '84' + sdt.slice(1) : sdt
+
+    const response = await fetch('https://business.openapi.zalo.me/message/template', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'access_token': process.env.ZALO_ACCESS_TOKEN
+        },
+        body: JSON.stringify({
+            phone: phone,
+            template_id: '586307',
+            template_data: { otp: code },
+            tracking_id: `otp_${Date.now()}`
+        })
+    })
+
+    if (!response.ok) throw new Error('Zalo HTTP ' + response.status)
+    const result = await response.json()
+    if (result.error !== 0) {
+        throw new Error(result.message)
+    }
 }
 
 export default async function handler(req, res) {
@@ -104,9 +115,9 @@ export default async function handler(req, res) {
 
     // 8. Gửi SMS (bọc try/catch để không vỡ flow nếu SMS fail)
     try {
-        await sendSms(sdt, code)
+        await sendZaloZns(sdt, code)
     } catch (e) {
-        console.error('sendSms failed:', e?.message)
+        console.error('sendZaloZns failed:', e?.message)
     }
 
     // 9. Thành công — TUYỆT ĐỐI KHÔNG trả code về client
