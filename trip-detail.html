@@ -785,18 +785,16 @@
         const tripId = params.get('trip_id')
         if (!tripId) { window.location.href = 'bai10.html'; return }
 
-        const { data: { session } } = await sb.auth.getSession()
-        if (!session) { window.location.href = 'bai10.html'; return }
-        const profile = await getUserProfile(sb, session.user.email)
-        if (!profile) { window.location.href = 'bai10.html'; return }
+        const auth = await requireRole(sb, ['owner', 'driver', 'supervisor'])
+        if (!auth) return
+        const profile = auth.profile
         currentProfile = profile
 
         let ownerId
         if (currentProfile.role === 'owner') {
             ownerId = currentProfile.id
         } else {
-            const { data: ownerData } = await sb.from('users').select('owner_id').eq('id', currentProfile.id).single()
-            ownerId = ownerData?.owner_id || null
+            ownerId = currentProfile.owner_id || null
         }
         if (ownerId === null) {
             showToast('Không tìm thấy thông tin chủ xe', 'error')
