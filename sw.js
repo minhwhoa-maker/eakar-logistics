@@ -1,4 +1,4 @@
-const CACHE_NAME = 'van-tai-v31';
+const CACHE_NAME = 'van-tai-v32';
 const STATIC_ASSETS = [
     './bai10.html',
     './style.css',

@@ -73,11 +73,11 @@
 </head>
 <body>
     <div class="login-card">
-        <h2 class="login-title">🚛 ĐĂNG NHẬP TÀI XẾ</h2>
+        <h2 class="login-title">🚛 ĐĂNG NHẬP</h2>
         
         <!-- Step 1: Nhập SĐT -->
         <div id="step1" class="step-container active">
-            <p class="login-desc">Nhập số điện thoại tài xế đã đăng ký để nhận mã OTP đăng nhập.</p>
+            <p class="login-desc">Nhập số điện thoại đã đăng ký để nhận mã OTP đăng nhập.</p>
             <div class="form-group">
                 <label for="sdt-input">Số điện thoại</label>
                 <input type="tel" id="sdt-input" placeholder="0901234567" autocomplete="tel">
@@ -217,10 +217,11 @@
                 if (response.ok && result.ok && result.token) {
                     showToast('Đăng nhập thành công!', 'success');
                     localStorage.setItem('driver_token', result.token);
-                    
-                    // Chuyển hướng sang driver-page.html sau 1s
+
+                    const role = result.role;
+                    const dest = (role === 'supervisor' || role === 'owner') ? 'owner-dashboard.html' : 'driver-page.html';
                     setTimeout(() => {
-                        window.location.href = 'driver-page.html';
+                        window.location.href = dest;
                     }, 1000);
                 } else {
                     showInputError(step2Error, result.error || 'Mã OTP không chính xác');

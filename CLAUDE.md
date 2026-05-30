@@ -40,12 +40,12 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - `bai10.html` có nút "Đăng nhập bằng số Zalo" → redirect `login-sdt.html`; `login-sdt.html` có link "Đăng nhập bằng phương thức khác" → redirect `bai10.html`
 - Static assets: `logo/logo.PNG` (header logo, max-width 220px), `logo/zalo.png` (icon nút Zalo, 20×20px). Case-sensitive trên Linux/Vercel — `logo.PNG` phải viết hoa đuôi
 
-#### `login-sdt.html` — driver SMS OTP login
+#### `login-sdt.html` — driver Zalo ZNS OTP login
 - Standalone page, **KHÔNG dùng `shared.js`** — chỉ `style.css` (`.btn`/`.btn-full`/`.form-group`/`.toast`) + local `showToast`
 - 2 step toggle bằng class `.step-container.active`: step1 nhập SĐT → `POST /api/send-otp`; step2 nhập mã 6 số → `POST /api/verify-otp`
 - SĐT sanitize client bằng `.replace(/\D/g, '').trim()` (chỉ giữ số, validate độ dài 9–11). State `currentSdt` được giữ ở module level giữa 2 bước.
 - Verify OK → `localStorage.setItem('driver_token', token)` → redirect `driver-page.html`. `driver-page.html` `logout()` cũng `localStorage.removeItem('driver_token')` + redirect về `login-sdt.html`
-- **Wired into auth**: Đăng nhập bằng SMS hoàn toàn tương thích với `requireRole` trong `shared.js` (gọi `/api/verify-session` để kiểm tra token hợp lệ và nạp profile). Các trang admin/driver khác (`luong-cua-toi.html`, `trip-detail.html`) cũng tự động hỗ trợ đăng nhập này.
+- **Wired into auth**: Đăng nhập bằng Zalo ZNS OTP hoàn toàn tương thích với `requireRole` trong `shared.js` (gọi `/api/verify-session` để kiểm tra token hợp lệ và nạp profile). Các trang admin/driver khác (`luong-cua-toi.html`, `trip-detail.html`) cũng tự động hỗ trợ đăng nhập này.
 
 #### `owner-dashboard.html` — owner xem báo cáo + tạo chuyến
 - Module-level vars: `currentOwnerProfileId`, `tripsChannel`, `xeList`, `driverList`, `pendingTripData`
@@ -340,13 +340,22 @@ Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"typ
   - `'maintenance'`: `{ driver_name, bien_so, bo_phan, chi_phi, trip_id }`
   
   Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`.
-- **`api/send-otp.js`** — POST `{ sdt }` (SĐT `0901234567`, normalize chỉ `.trim()`). Gửi OTP 6 số cho driver login qua Zalo ZNS template `586307`. Đã có frontend wiring (`login-sdt.html`), verify (`verify-otp.js`), và session check (`verify-session.js`). Flow: validate sdt → check `users` (phải tồn tại + `role='driver'`, nếu không trả 404/403) → rate-limit lớp 1 (60s giữa 2 lần xin mã) → rate-limit lớp 2 (≤5 mã/24h) → set `used=true` mọi mã cũ → tạo mã bằng `crypto.randomInt(100000, 1000000)` (crypto-secure, luôn 6 số) → INSERT `otp_codes` → gọi `sendZaloZns()`. **TUYỆT ĐỐI không trả `code` về client** (chỉ `{ ok: true }`). Tradeoff đã biết: 404/403/200 khác nhau → cho phép phone enumeration (chấp nhận để UX báo lỗi rõ). Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `ZALO_ACCESS_TOKEN`.
+- **`api/send-otp.js`** — POST `{ sdt }` (SĐT `0901234567`, normalize chỉ `.trim()`). Gửi OTP 6 số cho driver login qua Zalo ZNS template `586307`. Đã có frontend wiring (`login-sdt.html`), verify (`verify-otp.js`), và session check (`verify-session.js`). Flow: validate sdt → check `users` (phải tồn tại + `role='driver'`, nếu không trả 404/403) → rate-limit lớp 1 (60s giữa 2 lần xin mã) → rate-limit lớp 2 (≤5 mã/24h) → set `used=true` mọi mã cũ → tạo mã bằng `crypto.randomInt(100000, 1000000)` (crypto-secure, luôn 6 số) → INSERT `otp_codes` → gọi `sendZaloZns()` (hàm `sendZaloZns()` gọi `sendZnsWithToken(phone, code, token)` — POST `business.openapi.zalo.me/message/template`, header `access_token`, body `{phone, template_id:'586307', template_data:{otp}}`; nếu Zalo trả `error === -216` (token hết hạn) → `refreshZaloToken()` (POST `oauth.zaloapp.com/v4/oa/access_token`, header `secret_key`, body form-urlencoded `grant_type=refresh_token&app_id&refresh_token`) → retry 1 lần). **TUYỆT ĐỐI không trả `code` về client** (chỉ `{ ok: true }`). Tradeoff đã biết: 404/403/200 khác nhau → cho phép phone enumeration (chấp nhận để UX báo lỗi rõ). Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `ZALO_ACCESS_TOKEN`, `ZALO_REFRESH_TOKEN`, `ZALO_APP_ID`, `ZALO_APP_SECRET`.
+  - **Auto-refresh caveat**: dùng `process.env` runtime (không persist) → mỗi cold start dùng token cũ, chỉ refresh khi bị reject. Refresh_token Zalo đổi mỗi lần dùng nhưng code không lưu lại refresh_token mới — known limitation, refresh chỉ chạy được trong phạm vi 1 request.
   - **Dev mode**: khi `ZALO_ACCESS_TOKEN` chưa set → log `[DEV] OTP: <code>` ra Vercel logs, không gửi ZNS thật.
-  - **Phụ thuộc CHƯA tạo**: bảng `otp_codes` chưa tồn tại trên Supabase — phải tạo trước khi endpoint chạy. Schema đề xuất: `(id uuid PK, sdt text, code text, expires_at timestamptz, used bool DEFAULT false, wrong_attempts int DEFAULT 0, created_at timestamptz DEFAULT now())`. Cột `created_at DEFAULT now()` bắt buộc — cả 2 rate-limit dựa vào nó và code không insert thủ công.
+  - **Đã tạo trên Supabase. Schema:** `(id uuid PK, sdt text, code text, expires_at timestamptz, used bool DEFAULT false, wrong_attempts int DEFAULT 0, created_at timestamptz DEFAULT now())`. Cột `created_at DEFAULT now()` bắt buộc — cả 2 rate-limit dựa vào nó và code không insert thủ công.
 - **`api/verify-otp.js`** — POST `{ sdt, code }`. Verify OTP → tạo session token cho driver login. Flow: validate (`sdt` phải `typeof === 'string'`; `code = String(rawCode ?? '').trim()` rồi match `/^\d{6}$/`) → query `otp_codes` mã chưa dùng mới nhất (`.eq('used', false).order('created_at', { ascending: false }).limit(1)`, access `rows[0]` — KHÔNG `.maybeSingle()`) → check `expires_at` < now → check `wrong_attempts >= 5` → so sánh `code` (sai → UPDATE `wrong_attempts + 1` theo kiểu đọc-rồi-ghi, **không atomic**) → query `users.id` by `sdt` (`.maybeSingle()`) → mark `used=true` → tạo token `crypto.randomBytes(32).toString('hex')` → INSERT `sessions {token, user_id}` → trả `{ ok: true, token }`. **Session KHÔNG có expiry** (chủ ý — verify-session cũng không check). Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
-  - **Phụ thuộc CHƯA tạo**: bảng `sessions` chưa tồn tại trên Supabase — `CREATE TABLE sessions (token text PRIMARY KEY, user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE, created_at timestamptz DEFAULT now())`. FK phải → `public.users` (KHÔNG `auth.users`); `token` phải PK/UNIQUE để verify-session `.maybeSingle()` an toàn.
-  - **`users.sdt` cần UNIQUE**: lookup ở step query `users.id` dùng `.maybeSingle()` — nếu 2 driver trùng `sdt` sẽ vỡ. (NULL được phép trùng trong UNIQUE Postgres nên owner row `sdt=NULL` không sao.)
+  - **Đã tạo trên Supabase. Schema:** `CREATE TABLE sessions (token text PRIMARY KEY, user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE, created_at timestamptz DEFAULT now())`. FK phải → `public.users` (KHÔNG `auth.users`); `token` phải PK/UNIQUE để verify-session `.maybeSingle()` an toàn.
+  - **`users.sdt` đã có UNIQUE constraint**: lookup ở step query `users.id` dùng `.maybeSingle()` an toàn. (NULL được phép trùng trong UNIQUE Postgres nên owner row `sdt=NULL` không sao.)
 - **`api/verify-session.js`** — POST `{ token }`. Verify session token của driver và trả về thông tin user profile tương ứng. Flow: validate `token` → query `sessions` kết hợp join `users!user_id(id, role, full_name, sdt, owner_id)` để lấy profile của user đang liên kết với token session đó. Không kiểm tra expiry. Trả về thông tin profile định dạng JSON: `{ id, role, full_name, sdt, owner_id }`. Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
+
+### Zalo OA / ZNS — vận hành
+
+OA EA KAR Logistics (ID 3147741945922067881), App ID 32803479737513325, ZBS Account đã liên kết + nạp tiền.
+Template OTP 586307 đã duyệt. Gửi ZNS qua API yêu cầu OA có gói trả phí (Cơ bản miễn phí KHÔNG có quyền → lỗi OA does not have permission).
+Hiện dùng gói Dùng thử (10k, hết hạn 29/06/2026, không gia hạn được). Production phải lên Nâng cao 99k/tháng (gói rẻ nhất có ZBS Template Message API + gia hạn được).
+OTP về Zalo không có push notification nếu người nhận chưa "Quan tâm" (Follow) OA — chính sách Zalo, cần hướng dẫn driver follow OA.
+Đã có giấy phép hộ kinh doanh để hoàn tất xác thực doanh nghiệp OA.
 
 ### Vercel environment variables (tổng hợp)
 
@@ -360,6 +369,9 @@ Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"typ
 | `VAPID_PUBLIC_KEY` | `api/notify.js` |
 | `VAPID_PRIVATE_KEY` | `api/notify.js` |
 | `ZALO_ACCESS_TOKEN` | `api/send-otp.js` (Zalo OA access token — bỏ trống để dùng dev mode log) |
+| `ZALO_REFRESH_TOKEN` | `api/send-otp.js` |
+| `ZALO_APP_ID` | `api/send-otp.js` |
+| `ZALO_APP_SECRET` | `api/send-otp.js` |
 
 ## Database
 

@@ -85,8 +85,8 @@ export default async function handler(req, res) {
     if (!user) {
         return res.status(404).json({ error: 'Số điện thoại chưa được đăng ký. Liên hệ chủ xe.' })
     }
-    if (user.role !== 'driver') {
-        return res.status(403).json({ error: 'Tài khoản này không dùng đăng nhập SMS' })
+    if (user.role !== 'driver' && user.role !== 'supervisor') {
+        return res.status(403).json({ error: 'Tài khoản này không hỗ trợ đăng nhập bằng SĐT' })
     }
 
     const now = Date.now()

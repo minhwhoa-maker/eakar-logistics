@@ -34,6 +34,7 @@
             <h3>Thêm giám sát viên</h3>
             <div class="form-row">
                 <input type="email" id="new-email" placeholder="Email Google (gmail)">
+                <input type="tel" id="new-sdt" placeholder="SĐT (để đăng nhập Zalo OTP)">
                 <input type="text" id="new-name" placeholder="Họ và tên">
                 <button class="btn" onclick="addSupervisor()">Thêm</button>
             </div>
@@ -46,12 +47,13 @@
                     <thead>
                         <tr>
                             <th>Email</th>
+                            <th>SĐT</th>
                             <th>Họ và tên</th>
                             <th>Thao tác</th>
                         </tr>
                     </thead>
                     <tbody id="supervisor-list">
-                        <tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:16px">Đang tải...</td></tr>
+                        <tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px">Đang tải...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -72,19 +74,19 @@
         async function loadSupervisors() {
             const tbody = document.getElementById('supervisor-list')
             const { data, error } = await sb.from('users')
-                .select('id, email, full_name')
+                .select('id, email, sdt, full_name')
                 .eq('owner_id', ownerProfileId)
                 .eq('role', 'supervisor')
                 .order('full_name', { ascending: true })
 
             if (error) {
-                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--danger)">Lỗi tải dữ liệu</td></tr>'
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--danger)">Lỗi tải dữ liệu</td></tr>'
                 showToast('Lỗi: ' + error.message, 'error')
                 return
             }
 
             if (!data || data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:16px">Chưa có giám sát viên nào</td></tr>'
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px">Chưa có giám sát viên nào</td></tr>'
                 return
             }
 
@@ -93,6 +95,8 @@
                 const row = document.createElement('tr')
                 const emailTd = document.createElement('td')
                 emailTd.textContent = s.email || '-'
+                const sdtTd = document.createElement('td')
+                sdtTd.textContent = s.sdt || '-'
                 const nameTd = document.createElement('td')
                 nameTd.textContent = s.full_name || '-'
                 const actionTd = document.createElement('td')
@@ -101,7 +105,7 @@
                 delBtn.textContent = 'Xóa'
                 delBtn.addEventListener('click', () => deleteSupervisor(s.id, s.full_name || s.email))
                 actionTd.appendChild(delBtn)
-                row.append(emailTd, nameTd, actionTd)
+                row.append(emailTd, sdtTd, nameTd, actionTd)
                 tbody.appendChild(row)
             })
         }
@@ -109,6 +113,8 @@
         async function addSupervisor() {
             const email = document.getElementById('new-email').value.trim().toLowerCase()
             const full_name = document.getElementById('new-name').value.trim()
+            const sdtRaw = document.getElementById('new-sdt').value.replace(/\D/g, '').trim()
+            const sdt = sdtRaw || null
             if (!email) { showToast('Vui lòng nhập email!', 'error'); return }
             if (!full_name) { showToast('Vui lòng nhập họ và tên!', 'error'); return }
 
@@ -119,15 +125,23 @@
             if (existErr) { showToast('Lỗi kiểm tra email: ' + existErr.message, 'error'); return }
             if (existing) { showToast('Email này đã tồn tại trong hệ thống!', 'error'); return }
 
-            const { error } = await sb.from('users').insert({
-                email,
-                full_name,
-                role: 'supervisor',
-                owner_id: ownerProfileId
-            })
+            if (sdt) {
+                const { data: existingSdt, error: sdtErr } = await sb.from('users')
+                    .select('id')
+                    .eq('sdt', sdt)
+                    .maybeSingle()
+                if (sdtErr) { showToast('Lỗi kiểm tra SĐT: ' + sdtErr.message, 'error'); return }
+                if (existingSdt) { showToast('SĐT đã tồn tại trong hệ thống!', 'error'); return }
+            }
+
+            const insertData = { email, full_name, role: 'supervisor', owner_id: ownerProfileId }
+            if (sdt) insertData.sdt = sdt
+
+            const { error } = await sb.from('users').insert(insertData)
             if (error) { showToast('Lỗi: ' + error.message, 'error'); return }
 
             document.getElementById('new-email').value = ''
+            document.getElementById('new-sdt').value = ''
             document.getElementById('new-name').value = ''
             const msg = document.getElementById('add-msg')
             msg.style.display = 'block'

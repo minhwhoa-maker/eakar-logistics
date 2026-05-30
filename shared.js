@@ -71,14 +71,11 @@ async function requireRole(sb, expectedRole) {
             return null
         }
     } else {
-        if (!allowedRoles.includes('driver')) {
-            window.location.href = 'bai10.html'
-            return null
-        }
+        const loginRedirect = allowedRoles.includes('driver') ? 'login-sdt.html' : 'bai10.html'
 
         const token = localStorage.getItem('driver_token')
         if (!token) {
-            window.location.href = 'login-sdt.html'
+            window.location.href = loginRedirect
             return null
         }
 
@@ -90,13 +87,12 @@ async function requireRole(sb, expectedRole) {
             })
             if (!res.ok) {
                 localStorage.removeItem('driver_token')
-                window.location.href = 'login-sdt.html'
+                window.location.href = loginRedirect
                 return null
             }
             const data = await res.json()
-            if (!data || data.role !== 'driver') {
-                localStorage.removeItem('driver_token')
-                window.location.href = 'login-sdt.html'
+            if (!data || !allowedRoles.includes(data.role)) {
+                window.location.href = 'bai10.html'
                 return null
             }
             return {
@@ -111,7 +107,7 @@ async function requireRole(sb, expectedRole) {
             }
         } catch {
             localStorage.removeItem('driver_token')
-            window.location.href = 'login-sdt.html'
+            window.location.href = loginRedirect
             return null
         }
     }

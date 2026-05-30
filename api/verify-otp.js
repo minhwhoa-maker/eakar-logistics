@@ -57,7 +57,7 @@ export default async function handler(req, res) {
     // 6. Lấy users.id (KHÔNG dùng Auth UUID)
     const { data: user, error: userErr } = await sb
         .from('users')
-        .select('id')
+        .select('id, role')
         .eq('sdt', sdt)
         .maybeSingle()
     if (userErr) {
@@ -88,5 +88,5 @@ export default async function handler(req, res) {
     }
 
     // 10. Trả token về client
-    return res.status(200).json({ ok: true, token })
+    return res.status(200).json({ ok: true, token, role: user.role })
 }
