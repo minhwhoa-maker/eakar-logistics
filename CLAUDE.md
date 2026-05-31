@@ -44,8 +44,10 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - Standalone page, **KHÔNG dùng `shared.js`** — chỉ `style.css` (`.btn`/`.btn-full`/`.form-group`/`.toast`) + local `showToast`
 - 2 step toggle bằng class `.step-container.active`: step1 nhập SĐT → `POST /api/send-otp`; step2 nhập mã 6 số → `POST /api/verify-otp`
 - SĐT sanitize client bằng `.replace(/\D/g, '').trim()` (chỉ giữ số, validate độ dài 9–11). State `currentSdt` được giữ ở module level giữa 2 bước.
-- Verify OK → `localStorage.setItem('driver_token', token)` → redirect `driver-page.html`. `driver-page.html` `logout()` cũng `localStorage.removeItem('driver_token')` + redirect về `login-sdt.html`
-- **Wired into auth**: Đăng nhập bằng Zalo ZNS OTP hoàn toàn tương thích với `requireRole` trong `shared.js` (gọi `/api/verify-session` để kiểm tra token hợp lệ và nạp profile). Các trang admin/driver khác (`luong-cua-toi.html`, `trip-detail.html`) cũng tự động hỗ trợ đăng nhập này.
+- Verify OK → `localStorage.setItem('driver_token', token)` → redirect theo `result.role`: `supervisor`/`owner` → `owner-dashboard.html`; còn lại (driver) → `driver-page.html`. localStorage key luôn là `'driver_token'` dù supervisor cũng dùng — KHÔNG đổi tên.
+- `driver-page.html` `logout()` cũng `localStorage.removeItem('driver_token')` + redirect về `login-sdt.html`
+- **Hỗ trợ cả driver lẫn supervisor**: `api/send-otp.js` cho phép `role='driver'` hoặc `'supervisor'`; `api/verify-otp.js` trả thêm `role` trong response.
+- **Wired into auth**: `requireRole` trong `shared.js` tự xử cả OAuth lẫn Zalo token cho mọi trang dùng nó (`luong-cua-toi.html`, `trip-detail.html`, các trang owner khi supervisor đăng nhập Zalo).
 
 #### `owner-dashboard.html` — owner xem báo cáo + tạo chuyến
 - Module-level vars: `currentOwnerProfileId`, `tripsChannel`, `xeList`, `driverList`, `pendingTripData`
@@ -91,10 +93,10 @@ Không có build step, không có test runner, không có lint. Quy trình:
 
 #### `trip-detail.html` — xem chi tiết chuyến (shared owner + driver)
 - URL param: `?trip_id=`. Module-level `currentProfile` set trong `initPage()`
-- Auth: dùng `getSession() + getUserProfile()` — KHÔNG dùng `requireRole`
-- Driver chỉ xem trip của mình; owner xem tất cả. `ownerId` cho driver: query `users.select('owner_id').eq('id', currentProfile.id)` qua FK
+- Auth: dùng `requireRole(sb, ['owner', 'driver', 'supervisor'])` — hỗ trợ cả OAuth lẫn Zalo token. `ownerId` lấy thẳng từ `auth.profile.owner_id` (không query DB thêm); owner dùng `profile.id`.
+- Driver chỉ xem trip của mình; owner + supervisor xem tất cả trong fleet. `ownerId` cho driver/supervisor: `currentProfile.owner_id` (sẵn trong profile từ `requireRole`).
 - Trips query: `.select('*, tai_xe:users!tai_xe_id(full_name), xe:xe(bien_so)')`
-- `goBack()`: ưu tiên `document.referrer`, fallback theo `currentProfile.role`
+- `goBack()`: ưu tiên `document.referrer`, fallback theo `currentProfile.role`; supervisor không có branch riêng → rơi vào `bai10.html` (known gap)
 - Driver + dang_chay: thêm/sửa/xóa chi phí inline; ảnh bắt buộc + camera-only + GPS bắt buộc
 - Ảnh hóa đơn: `openImageModal(url)` fullscreen overlay (KHÔNG mở tab mới)
 - Badge `⚠️ Cũ` cho entries `is_legacy=true`; `📷⚠️` tooltip nếu `anh_realtime === false`
@@ -209,7 +211,8 @@ Không có build step, không có test runner, không có lint. Quy trình:
 #### `supervisors.html` — owner quản lý giám sát viên (Phase A)
 - Auth: `requireRole(sb, 'owner')` — CHỈ owner gốc, supervisor không vào được
 - Chức năng: danh sách supervisor (query `users` `.eq('role','supervisor').eq('owner_id', ownerProfileId)`), thêm (INSERT với `role:'supervisor'`), xóa có confirm
-- Supervisor login qua Google OAuth → `bai10.redirectByRole` redirect sang `owner-dashboard.html`
+- Form thêm supervisor có 3 field: email (bắt buộc), SĐT (tùy chọn, dùng cho Zalo OTP), họ và tên (bắt buộc). `addSupervisor()` check trùng email + trùng SĐT (nếu có) trước khi INSERT; SĐT insert là `null` nếu để trống (KHÔNG empty string — UNIQUE constraint).
+- **Supervisor hỗ trợ 2 phương thức đăng nhập**: Google OAuth → `bai10.html` redirect sang `owner-dashboard.html`; Zalo OTP → `login-sdt.html` (cần có `sdt` trong `users`) → redirect `owner-dashboard.html`.
 - **Phase A — read-only mềm**: supervisor thấy đúng fleet của admin (4 trang: owner-dashboard, driver, vehicles, luong-thang) nhưng mọi nút tạo/sửa/xóa bị ẩn bằng **CSS role-gating pattern** (`.owner-only` ẩn mặc định trong `style.css`; JS thêm `body.role-owner` cho owner để gỡ ẩn) — xem chi tiết trong section CSS conventions. Tránh FOUC vì element ẩn ngay khi parse, không chờ JS hide-after-render. `vehicles.html` còn vài dynamic cell (`loadVehicles()` row builder) vẫn dùng conditional `currentRole === 'supervisor'` branches cho plate/salary/action cells — chủ ý không migrate sang `.owner-only` (post-auth render nên không có FOUC, rewrite risky vì intertwined với inline-salary-edit). RLS chưa bật → đây là phòng thủ UI thuần, chưa phải server-side. Phase B (RLS) là milestone riêng.
 - Pattern effectiveOwnerId: `supervisor ? profile.owner_id : profile.id` — gán vào biến owner-id của trang để mọi query `.eq('owner_id', ...)` tự đúng fleet admin
 - `currentUserId = auth.profile.id` (ID của người đang đăng nhập) dùng riêng cho `setupPushNotifications` và `loadNotifySettings`/`saveNotifySetting` — không dùng `effectiveOwnerId` để tránh đụng notification settings của admin
