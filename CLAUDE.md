@@ -31,7 +31,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 ### Page roles
 
 #### `bai10.html` — landing + auth
-- Landing page + Google OAuth + role redirect
+- Landing page + Google OAuth + role redirect + **PWA cold-start router**
 - Có `<style>` block riêng (~220 dòng) cho hero/stats/features layout — KHÔNG dùng `.card` chuẩn
 - `checkUserRole`: email không tìm thấy trong `users` → hiện inline error card (ẩn login UI, card đỏ + nút "Thử lại bằng tài khoản khác" gọi `signOut()` + redirect); **không INSERT**
 - `loadStats()`: query `trips`/`users` công khai cho landing stats (sẽ break nếu bật RLS)
@@ -39,6 +39,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - OAuth `redirectTo`: `window.location.origin + '/bai10.html'`
 - `bai10.html` có nút "Đăng nhập bằng số Zalo" → redirect `login-sdt.html`; `login-sdt.html` có link "Đăng nhập bằng phương thức khác" → redirect `bai10.html`
 - Static assets: `logo/logo.PNG` (header logo, max-width 220px), `logo/zalo.png` (icon nút Zalo, 20×20px). Case-sensitive trên Linux/Vercel — `logo.PNG` phải viết hoa đuôi
+- **`checkUser()` — cold-start router 2-auth**: `manifest.json` `start_url: ./bai10.html` → PWA luôn về bai10. Khi `getSession()` trả null, hàm kiểm tra `localStorage.driver_token` trước khi `showLogin()`: có token → `POST /api/verify-session`; `200` → `window.location.replace()` theo role; `4xx` → xóa token + `showLogin()`; `5xx`/network throw → **giữ token** + `showLogin()` (tránh xóa token khi chỉ rớt mạng). `onAuthStateChange` chỉ bind khi không có token hoặc token chết 4xx. KHÔNG dùng `requireRole()` ở đây — nó redirect ngược về bai10 khi fail → vòng lặp vô hạn.
 
 #### `login-sdt.html` — driver Zalo ZNS OTP login
 - Standalone page, **KHÔNG dùng `shared.js`** — chỉ `style.css` (`.btn`/`.btn-full`/`.form-group`/`.toast`) + local `showToast`
@@ -135,6 +136,8 @@ Không có build step, không có test runner, không có lint. Quy trình:
 **Local helpers**: `numberToVietnamese(n)` (capitalize first letter), `addMoneyHint(input)` (dấu chấm nghìn, raw digits trong `input.dataset.rawValue`). Submit functions đọc `dataset.rawValue || .value`
 
 **Dead code**: `#btn-new-trip` và form tạo chuyến tồn tại trong HTML nhưng `initPage()` không bao giờ show — có thể xóa an toàn
+
+**`setupLogoutListener(sb)` đã bị comment out** trong `driver-page.html` (intentional). Driver/supervisor Zalo không có Supabase session → `onAuthStateChange` bắn `SIGNED_OUT` khi cold-start → văng khỏi app. Nếu muốn bật lại, cần đảm bảo `setupLogoutListener` không văng Zalo user.
 
 ---
 
