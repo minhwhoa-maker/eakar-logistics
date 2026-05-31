@@ -283,16 +283,49 @@
                 await redirectByRole(session.user);
                 return;
             } else {
-                showLogin();
-            }
+                const token = localStorage.getItem('driver_token');
+                if (!token) {
+                    showLogin();
+                    sb.auth.onAuthStateChange(async (event, session) => {
+                        if (event === 'SIGNED_IN' && session) {
+                            await redirectByRole(session.user);
+                        } else if (event === 'SIGNED_OUT') {
+                            showLogin();
+                        }
+                    });
+                    return;
+                }
 
-            sb.auth.onAuthStateChange(async (event, session) => {
-                if (event === 'SIGNED_IN' && session) {
-                    await redirectByRole(session.user);
-                } else if (event === 'SIGNED_OUT') {
+                showLoading('Đang xác thực...');
+                try {
+                    const res = await fetch('/api/verify-session', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ token })
+                    });
+                    if (res.ok) {
+                        const profile = await res.json();
+                        const dest = (profile.role === 'owner' || profile.role === 'supervisor')
+                            ? 'owner-dashboard.html'
+                            : 'driver-page.html';
+                        window.location.replace(dest);
+                    } else if (res.status >= 400 && res.status < 500) {
+                        localStorage.removeItem('driver_token');
+                        showLogin();
+                        sb.auth.onAuthStateChange(async (event, session) => {
+                            if (event === 'SIGNED_IN' && session) {
+                                await redirectByRole(session.user);
+                            } else if (event === 'SIGNED_OUT') {
+                                showLogin();
+                            }
+                        });
+                    } else {
+                        showLogin();
+                    }
+                } catch (err) {
                     showLogin();
                 }
-            });
+            }
         }
 
         checkUser();
