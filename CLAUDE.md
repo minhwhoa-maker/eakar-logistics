@@ -232,10 +232,10 @@ formatMoney(n)          → "1.234.567 đ" (vi-VN locale + đ ký tự)
 formatDate(timestamptz) → "HH:MM - DD/MM/YY" (nhận ISO string hoặc timestamptz từ Supabase)
 getUserRole(sb, email)  → role string hoặc null
 getUserProfile(sb, email) → { id, role, owner_id } hoặc null
-requireRole(sb, role)   → đảm bảo session + role khớp; redirect bai10 nếu không.
+requireRole(sb, role)   → đảm bảo session + role khớp; redirect bai10 nếu không. Hỗ trợ 2 auth: Supabase session (OAuth) HOẶC driver_token (Zalo) verify qua POST /api/verify-session.
                           Nhận string (cũ) hoặc array (mới): `requireRole(sb, ['owner', 'supervisor'])`.
                           Trả { user, profile } hoặc null.
-setupLogoutListener(sb) → tự redirect bai10 khi logout từ tab khác.
+setupLogoutListener(sb) → tự redirect bai10 khi logout từ tab khác. Early-return nếu có driver_token (Zalo user KHÔNG đăng ký onAuthStateChange — tránh bị văng khi cold start không có Supabase session).
 getLocation()           → Promise<{ lat, lng }> — dùng Geolocation API, timeout 10s.
                           Reject với Error nếu thiết bị không hỗ trợ hoặc user từ chối GPS.
 ```
