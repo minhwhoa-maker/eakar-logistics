@@ -79,45 +79,94 @@ async function requireRole(sb, expectedRole) {
             return null
         }
 
-        try {
-            const res = await fetch('/api/verify-session', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token })
-            })
-            if (!res.ok) {
-                localStorage.removeItem('driver_token')
-                window.location.href = loginRedirect
-                return null
-            }
-            const data = await res.json()
-            if (!data || !allowedRoles.includes(data.role)) {
-                window.location.href = 'bai10.html'
-                return null
-            }
-            return {
-                user: { id: data.id },
-                profile: {
-                    id: data.id,
-                    role: data.role,
-                    full_name: data.full_name,
-                    sdt: data.sdt,
-                    owner_id: data.owner_id
-                }
-            }
-        } catch {
-            localStorage.removeItem('driver_token')
-            window.location.href = loginRedirect
-            return null
+        const showRetryOverlay = () => {
+            if (document.getElementById('connretry-overlay')) return
+            const ov = document.createElement('div')
+            ov.id = 'connretry-overlay'
+            ov.style.cssText = 'position:fixed; inset:0; z-index:99999; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; font-size:16px; color:#444;'
+            ov.innerHTML = '<div id="connretry-spinner" style="width:40px; height:40px; border:4px solid #e0e0e0; border-top-color:#1565c0; border-radius:50%; animation:connretry-spin 0.8s linear infinite;"></div><div id="connretry-text">Đang kết nối lại...</div><style>@keyframes connretry-spin{to{transform:rotate(360deg)}}</style>'
+            document.body.appendChild(ov)
         }
+        const removeOverlay = () => {
+            const el = document.getElementById('connretry-overlay')
+            if (el) el.remove()
+        }
+
+        const MAX_TRIES = 3
+        for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
+            const controller = new AbortController()
+            const timer = setTimeout(() => controller.abort(), 8000)
+            let needRetry = false
+            try {
+                const res = await fetch('/api/verify-session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token }),
+                    signal: controller.signal
+                })
+                if (res.ok) {
+                    const data = await res.json()
+                    removeOverlay()
+                    if (!data || !allowedRoles.includes(data.role)) {
+                        window.location.href = 'bai10.html'
+                        return null
+                    }
+                    return {
+                        user: { id: data.id },
+                        profile: {
+                            id: data.id,
+                            role: data.role,
+                            full_name: data.full_name,
+                            sdt: data.sdt,
+                            owner_id: data.owner_id
+                        }
+                    }
+                } else if (res.status >= 500) {
+                    needRetry = true   // lỗi server tạm — giữ token, thử lại
+                } else {
+                    // 401 / 4xx — token không hợp lệ hoặc request sai
+                    removeOverlay()
+                    localStorage.removeItem('driver_token')
+                    window.location.href = loginRedirect
+                    return null
+                }
+            } catch {
+                // fetch throw / AbortError timeout / res.json() throw — giữ token, thử lại
+                needRetry = true
+            } finally {
+                clearTimeout(timer)
+            }
+
+            if (needRetry && attempt < MAX_TRIES) {
+                showRetryOverlay()
+                await new Promise(r => setTimeout(r, 1500))
+            }
+        }
+
+        // Hết 3 vòng vẫn fail (toàn ≥500 / throw) — giữ token, không redirect.
+        showRetryOverlay()
+        const spin = document.getElementById('connretry-spinner')
+        if (spin) spin.remove()
+        const textEl = document.getElementById('connretry-text')
+        if (textEl) textEl.textContent = 'Lỗi kết nối, vui lòng thử lại'
+        const ov = document.getElementById('connretry-overlay')
+        if (ov && !document.getElementById('connretry-btn')) {
+            const btn = document.createElement('button')
+            btn.id = 'connretry-btn'
+            btn.textContent = 'Thử lại'
+            btn.style.cssText = 'padding:10px 24px; background:#1565c0; color:#fff; border:none; border-radius:8px; font-size:15px; cursor:pointer;'
+            btn.onclick = () => location.reload()
+            ov.appendChild(btn)
+        }
+        return null
     }
 }
 
 // Tự động redirect về bai10 khi user logout từ tab khác.
 function setupLogoutListener(sb) {
+    if (localStorage.getItem('driver_token')) return
     sb.auth.onAuthStateChange((event, session) => {
         if (event === 'SIGNED_OUT' || !session) {
-            if (localStorage.getItem('driver_token')) return
             window.location.href = 'bai10.html'
         }
     })

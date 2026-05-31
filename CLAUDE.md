@@ -211,8 +211,12 @@ Không có build step, không có test runner, không có lint. Quy trình:
 #### `supervisors.html` — owner quản lý giám sát viên (Phase A)
 - Auth: `requireRole(sb, 'owner')` — CHỈ owner gốc, supervisor không vào được
 - Chức năng: danh sách supervisor (query `users` `.eq('role','supervisor').eq('owner_id', ownerProfileId)`), thêm (INSERT với `role:'supervisor'`), xóa có confirm
+<<<<<<< HEAD
 - Form thêm supervisor có 3 field: email (bắt buộc), SĐT (tùy chọn, dùng cho Zalo OTP), họ và tên (bắt buộc). `addSupervisor()` check trùng email + trùng SĐT (nếu có) trước khi INSERT; SĐT insert là `null` nếu để trống (KHÔNG empty string — UNIQUE constraint).
 - **Supervisor hỗ trợ 2 phương thức đăng nhập**: Google OAuth → `bai10.html` redirect sang `owner-dashboard.html`; Zalo OTP → `login-sdt.html` (cần có `sdt` trong `users`) → redirect `owner-dashboard.html`.
+=======
+- Supervisor login qua Google OAuth hoặc Zalo OTP (`api/send-otp.js` cho phép `role IN ('driver','supervisor')`; supervisor login Zalo có `driver_token` trong localStorage giống driver) → `bai10.redirectByRole` redirect sang `owner-dashboard.html`
+>>>>>>> ba519958461ea788292ca39c5ed00c31a035bdb7
 - **Phase A — read-only mềm**: supervisor thấy đúng fleet của admin (4 trang: owner-dashboard, driver, vehicles, luong-thang) nhưng mọi nút tạo/sửa/xóa bị ẩn bằng **CSS role-gating pattern** (`.owner-only` ẩn mặc định trong `style.css`; JS thêm `body.role-owner` cho owner để gỡ ẩn) — xem chi tiết trong section CSS conventions. Tránh FOUC vì element ẩn ngay khi parse, không chờ JS hide-after-render. `vehicles.html` còn vài dynamic cell (`loadVehicles()` row builder) vẫn dùng conditional `currentRole === 'supervisor'` branches cho plate/salary/action cells — chủ ý không migrate sang `.owner-only` (post-auth render nên không có FOUC, rewrite risky vì intertwined với inline-salary-edit). RLS chưa bật → đây là phòng thủ UI thuần, chưa phải server-side. Phase B (RLS) là milestone riêng.
 - Pattern effectiveOwnerId: `supervisor ? profile.owner_id : profile.id` — gán vào biến owner-id của trang để mọi query `.eq('owner_id', ...)` tự đúng fleet admin
 - `currentUserId = auth.profile.id` (ID của người đang đăng nhập) dùng riêng cho `setupPushNotifications` và `loadNotifySettings`/`saveNotifySetting` — không dùng `effectiveOwnerId` để tránh đụng notification settings của admin
@@ -235,10 +239,10 @@ formatMoney(n)          → "1.234.567 đ" (vi-VN locale + đ ký tự)
 formatDate(timestamptz) → "HH:MM - DD/MM/YY" (nhận ISO string hoặc timestamptz từ Supabase)
 getUserRole(sb, email)  → role string hoặc null
 getUserProfile(sb, email) → { id, role, owner_id } hoặc null
-requireRole(sb, role)   → đảm bảo session + role khớp; redirect bai10 nếu không.
+requireRole(sb, role)   → đảm bảo session + role khớp; redirect bai10 nếu không. Hỗ trợ 2 auth: Supabase session (OAuth) HOẶC driver_token (Zalo) verify qua POST /api/verify-session.
                           Nhận string (cũ) hoặc array (mới): `requireRole(sb, ['owner', 'supervisor'])`.
                           Trả { user, profile } hoặc null.
-setupLogoutListener(sb) → tự redirect bai10 khi logout từ tab khác.
+setupLogoutListener(sb) → tự redirect bai10 khi logout từ tab khác. Early-return nếu có driver_token (Zalo user KHÔNG đăng ký onAuthStateChange — tránh bị văng khi cold start không có Supabase session).
 getLocation()           → Promise<{ lat, lng }> — dùng Geolocation API, timeout 10s.
                           Reject với Error nếu thiết bị không hỗ trợ hoặc user từ chối GPS.
 ```
