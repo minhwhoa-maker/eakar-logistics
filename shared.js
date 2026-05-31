@@ -115,9 +115,9 @@ async function requireRole(sb, expectedRole) {
 
 // Tự động redirect về bai10 khi user logout từ tab khác.
 function setupLogoutListener(sb) {
+    if (localStorage.getItem('driver_token')) return
     sb.auth.onAuthStateChange((event, session) => {
         if (event === 'SIGNED_OUT' || !session) {
-            if (localStorage.getItem('driver_token')) return
             window.location.href = 'bai10.html'
         }
     })
