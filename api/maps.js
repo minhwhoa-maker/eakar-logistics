@@ -57,6 +57,8 @@ export default async function handler(req, res) {
                 `&vehicle=car&roundtrip=false&sources=first&destinations=last&points_encoded=false`
             const tspRes = await fetch(tspUrl)
             const tspData = await tspRes.json()
+            console.log('[TSP_DEBUG] full response:', JSON.stringify(tspData))
+            console.log('[TSP_DEBUG] input order lat/lng:', JSON.stringify(allPoints))
 
             if (!tspData.paths || tspData.paths.length === 0) {
                 return res.status(200).json({ error: 'VietMap không tìm được tuyến đường' })
