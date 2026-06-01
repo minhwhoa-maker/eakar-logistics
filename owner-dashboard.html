@@ -621,7 +621,25 @@
                     if (container.children.length > 1) row.remove()
                 })
 
-                row.append(addrInput, latInput, lngInput, gpsBtn, coordSpan, delBtn)
+                const tenInput = document.createElement('input')
+                tenInput.type = 'text'
+                tenInput.className = 'diem-ten'
+                tenInput.placeholder = 'Tên liên hệ'
+                tenInput.style.cssText = 'min-width:110px;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px'
+
+                const sdtInput = document.createElement('input')
+                sdtInput.type = 'tel'
+                sdtInput.className = 'diem-sdt'
+                sdtInput.placeholder = 'SĐT'
+                sdtInput.style.cssText = 'min-width:100px;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px'
+
+                const ghichuInput = document.createElement('input')
+                ghichuInput.type = 'text'
+                ghichuInput.className = 'diem-ghichu'
+                ghichuInput.placeholder = 'Ghi chú (tùy chọn)'
+                ghichuInput.style.cssText = 'flex:1;min-width:110px;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px'
+
+                row.append(addrInput, latInput, lngInput, gpsBtn, coordSpan, tenInput, sdtInput, ghichuInput, delBtn)
                 container.appendChild(row)
             }
 
@@ -723,7 +741,10 @@
                 return Array.from(rows).map(row => ({
                     dia_chi: row.querySelector('.diem-dia-chi').value.trim(),
                     lat: row.querySelector('.diem-lat').value ? Number(row.querySelector('.diem-lat').value) : null,
-                    lng: row.querySelector('.diem-lng').value ? Number(row.querySelector('.diem-lng').value) : null
+                    lng: row.querySelector('.diem-lng').value ? Number(row.querySelector('.diem-lng').value) : null,
+                    ten_lien_he: row.querySelector('.diem-ten').value.trim(),
+                    sdt_lien_he: row.querySelector('.diem-sdt').value.trim(),
+                    ghi_chu: row.querySelector('.diem-ghichu').value.trim()
                 }))
             }
 
@@ -740,6 +761,8 @@
                 if (giaoDiems.length === 0) { showToast('Cần ít nhất 1 điểm giao!', 'error'); return }
                 if (bocDiems.some(d => !d.dia_chi)) { showToast('Vui lòng nhập địa chỉ cho tất cả điểm bốc!', 'error'); return }
                 if (giaoDiems.some(d => !d.dia_chi)) { showToast('Vui lòng nhập địa chỉ cho tất cả điểm giao!', 'error'); return }
+                if ([...bocDiems, ...giaoDiems].some(d => !d.ten_lien_he)) { showToast('Vui lòng nhập tên liên hệ cho tất cả điểm!', 'error'); return }
+                if ([...bocDiems, ...giaoDiems].some(d => !d.sdt_lien_he)) { showToast('Vui lòng nhập SĐT liên hệ cho tất cả điểm!', 'error'); return }
 
                 const mode = document.getElementById('nt-loai-luong').value
                 let tien_co_dinh = 0
@@ -906,7 +929,10 @@
                         dia_chi: d.dia_chi,
                         lat: d.lat || null,
                         lng: d.lng || null,
-                        trang_thai: 'chua_thuc_hien'
+                        trang_thai: 'chua_thuc_hien',
+                        ten_lien_he: d.ten_lien_he,
+                        sdt_lien_he: d.sdt_lien_he,
+                        ghi_chu: d.ghi_chu
                     })))
 
                     await fetch('/api/notify', {

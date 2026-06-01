@@ -1289,16 +1289,44 @@
                 badge.style.cssText = 'background:#fff3e0;color:#e67e22;border-radius:4px;padding:2px 7px;font-size:0.82em;white-space:nowrap'
             }
 
-            const addr = document.createElement('span')
-            addr.style.cssText = 'flex:1;font-size:0.9em'
+            const addr = document.createElement('div')
+            addr.style.cssText = 'flex:1;font-size:0.9em;display:flex;flex-direction:column;gap:2px'
+
+            const addrLine = document.createElement('span')
             if (diem.lat && diem.lng) {
                 const link = document.createElement('a')
                 link.href = `https://www.google.com/maps?q=${diem.lat},${diem.lng}`
                 link.target = '_blank'
                 link.textContent = diem.dia_chi || ''
-                addr.appendChild(link)
+                addrLine.appendChild(link)
             } else {
-                addr.textContent = diem.dia_chi || ''
+                addrLine.textContent = diem.dia_chi || ''
+            }
+            addr.appendChild(addrLine)
+
+            if (diem.ten_lien_he || diem.sdt_lien_he || diem.ghi_chu) {
+                const contactRow = document.createElement('div')
+                contactRow.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap'
+                if (diem.ten_lien_he) {
+                    const nameEl = document.createElement('span')
+                    nameEl.style.cssText = 'font-size:0.82em;color:var(--text-muted)'
+                    nameEl.textContent = diem.ten_lien_he
+                    contactRow.appendChild(nameEl)
+                }
+                if (diem.sdt_lien_he) {
+                    const tel = document.createElement('a')
+                    tel.href = 'tel:' + diem.sdt_lien_he
+                    tel.style.cssText = 'font-size:0.82em'
+                    tel.textContent = diem.sdt_lien_he
+                    contactRow.appendChild(tel)
+                }
+                if (diem.ghi_chu) {
+                    const note = document.createElement('span')
+                    note.style.cssText = 'font-size:0.82em;color:var(--text-muted);font-style:italic'
+                    note.textContent = diem.ghi_chu
+                    contactRow.appendChild(note)
+                }
+                addr.appendChild(contactRow)
             }
 
             row.append(badge, addr)
