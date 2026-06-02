@@ -356,6 +356,7 @@ Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"typ
   - **Đã tạo trên Supabase. Schema:** `CREATE TABLE sessions (token text PRIMARY KEY, user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE, created_at timestamptz DEFAULT now())`. FK phải → `public.users` (KHÔNG `auth.users`); `token` phải PK/UNIQUE để verify-session `.maybeSingle()` an toàn.
   - **`users.sdt` đã có UNIQUE constraint**: lookup ở step query `users.id` dùng `.maybeSingle()` an toàn. (NULL được phép trùng trong UNIQUE Postgres nên owner row `sdt=NULL` không sao.)
 - **`api/verify-session.js`** — POST `{ token }`. Verify session token của driver và trả về thông tin user profile tương ứng. Flow: validate `token` → query `sessions` kết hợp join `users!user_id(id, role, full_name, sdt, owner_id)` để lấy profile của user đang liên kết với token session đó. Không kiểm tra expiry. Trả về thông tin profile định dạng JSON: `{ id, role, full_name, sdt, owner_id }`. Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
+- **`api/parse-diem.js`** — POST `{ text }`. Parse text Zalo từ người gửi hàng → trích xuất thông tin liên hệ. Gọi OpenRouter (DeepSeek V3.2, `temperature: 0`) với few-shot SYSTEM_PROMPT. Trả `{ ten, sdt, dia_chi, ghi_chu }` — field thiếu là `''`, không bao giờ bịa. Validate `text` bắt buộc trước khi gọi API (trả 400 nếu rỗng — DeepSeek hallucinate khi input rỗng). Strip markdown fence từ response phòng thân. **Phân công công cụ**: endpoint này chỉ xử lý phần chữ; URL Google Maps/toạ độ là việc của `parseMapsUrl()` (regex) phía client — LLM không đụng tới. Env: `OPENROUTER_API_KEY`.
 
 ### Zalo OA / ZNS — vận hành
 
@@ -380,6 +381,7 @@ OTP về Zalo không có push notification nếu người nhận chưa "Quan tâ
 | `ZALO_REFRESH_TOKEN` | `api/send-otp.js` |
 | `ZALO_APP_ID` | `api/send-otp.js` |
 | `ZALO_APP_SECRET` | `api/send-otp.js` |
+| `OPENROUTER_API_KEY` | `api/parse-diem.js` |
 
 ## Database
 
