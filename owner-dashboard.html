@@ -677,10 +677,93 @@
                 delWrapper.style.cssText = 'display:flex;justify-content:flex-end'
                 delWrapper.appendChild(delBtn)
 
+                const pasteBtn = document.createElement('button')
+                pasteBtn.type = 'button'
+                pasteBtn.className = 'btn btn-gray'
+                pasteBtn.style.cssText = 'font-size:12px;padding:6px 10px;white-space:nowrap;align-self:flex-start'
+                pasteBtn.textContent = '📋 Dán từ Zalo'
+
+                const pasteBox = document.createElement('div')
+                pasteBox.style.display = 'none'
+
+                const pasteTextarea = document.createElement('textarea')
+                pasteTextarea.className = 'diem-paste-text'
+                pasteTextarea.placeholder = 'Dán tin nhắn Zalo vào đây...'
+                pasteTextarea.rows = 3
+                pasteTextarea.style.cssText = 'width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px'
+
+                const parseBtnRow = document.createElement('div')
+                parseBtnRow.style.cssText = 'display:flex;gap:6px;margin-top:6px'
+
+                const parseBtn = document.createElement('button')
+                parseBtn.type = 'button'
+                parseBtn.className = 'btn'
+                parseBtn.style.cssText = 'font-size:12px;padding:6px 10px'
+                parseBtn.textContent = '✨ Tách thông tin'
+
+                const cancelPasteBtn = document.createElement('button')
+                cancelPasteBtn.type = 'button'
+                cancelPasteBtn.className = 'btn btn-gray'
+                cancelPasteBtn.style.cssText = 'font-size:12px;padding:6px 10px'
+                cancelPasteBtn.textContent = 'Hủy'
+
+                parseBtnRow.append(parseBtn, cancelPasteBtn)
+                pasteBox.append(pasteTextarea, parseBtnRow)
+
+                pasteBtn.addEventListener('click', () => {
+                    pasteBox.style.display = pasteBox.style.display === 'none' ? 'block' : 'none'
+                    if (pasteBox.style.display === 'block') pasteTextarea.focus()
+                })
+
+                cancelPasteBtn.addEventListener('click', () => {
+                    pasteBox.style.display = 'none'
+                    pasteTextarea.value = ''
+                })
+
+                async function handlePaste() {
+                    const raw = pasteTextarea.value.trim()
+                    if (!raw) {
+                        showToast('Chưa có nội dung để tách', 'error')
+                        return
+                    }
+                    parseBtn.disabled = true
+                    parseBtn.textContent = '⏳ Đang tách...'
+
+                    const coord = parseMapsUrl(raw)
+                    if (coord) setCoord(coord.lat, coord.lng)
+
+                    try {
+                        const res = await fetch('/api/parse-diem', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ text: raw })
+                        })
+                        if (!res.ok) {
+                            showToast('Không tách được, vui lòng nhập tay', 'error')
+                        } else {
+                            const data = await res.json()
+                            if (data.ten) tenInput.value = data.ten
+                            if (data.sdt) sdtInput.value = data.sdt.replace(/\D/g, '').slice(0, 10)
+                            if (data.dia_chi) addrInput.value = data.dia_chi
+                            if (data.ghi_chu) ghichuInput.value = data.ghi_chu
+                            if (containerId === 'nt-boc-list') checkBocDauDu()
+                            pasteTextarea.value = ''
+                            pasteBox.style.display = 'none'
+                        }
+                    } catch {
+                        showToast('Lỗi kết nối, vui lòng nhập tay', 'error')
+                    } finally {
+                        parseBtn.disabled = false
+                        parseBtn.textContent = '✨ Tách thông tin'
+                    }
+                }
+
+                parseBtn.addEventListener('click', handlePaste)
+
                 const bgColor = containerId === 'nt-boc-list' ? '#fdf0e6' : '#e8f5ee'
                 const borderColor = containerId === 'nt-boc-list' ? 'var(--warning)' : 'var(--success)'
                 row.style.cssText = `display:flex;flex-direction:column;gap:6px;margin-bottom:10px;padding:10px;background:${bgColor};border-left:3px solid ${borderColor};border-radius:var(--radius-sm)`
-                row.append(tenInput, sdtInput, addrRow, ghichuInput, delWrapper)
+                row.append(pasteBtn, pasteBox, tenInput, sdtInput, addrRow, ghichuInput, delWrapper)
                 container.appendChild(row)
             }
 
