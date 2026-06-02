@@ -16,6 +16,9 @@
                 table thead tr th:nth-child(7) {
                     display: none;
                 }
+                #diem-cols-wrapper {
+                    flex-direction: column;
+                }
             }
         </style>
     </head>
@@ -618,33 +621,73 @@
                 delBtn.style.cssText = 'font-size:12px;padding:6px 10px'
                 delBtn.textContent = '✕'
                 delBtn.addEventListener('click', () => {
-                    if (container.children.length > 1) row.remove()
+                    if (container.children.length > 1) {
+                        row.remove()
+                        if (containerId === 'nt-boc-list') checkBocDauDu()
+                    }
                 })
+
+                const inputCss = 'width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px;background:white'
 
                 const tenInput = document.createElement('input')
                 tenInput.type = 'text'
                 tenInput.className = 'diem-ten'
                 tenInput.placeholder = 'Tên liên hệ'
-                tenInput.style.cssText = 'min-width:110px;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px'
+                tenInput.style.cssText = inputCss
 
                 const sdtInput = document.createElement('input')
                 sdtInput.type = 'tel'
+                sdtInput.inputMode = 'numeric'
+                sdtInput.maxLength = 10
                 sdtInput.className = 'diem-sdt'
                 sdtInput.placeholder = 'SĐT'
-                sdtInput.style.cssText = 'min-width:100px;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px'
+                sdtInput.style.cssText = inputCss
+                sdtInput.addEventListener('input', () => {
+                    sdtInput.value = sdtInput.value.replace(/\D/g, '')
+                })
 
                 const ghichuInput = document.createElement('input')
                 ghichuInput.type = 'text'
                 ghichuInput.className = 'diem-ghichu'
                 ghichuInput.placeholder = 'Ghi chú (tùy chọn)'
-                ghichuInput.style.cssText = 'flex:1;min-width:110px;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px'
+                ghichuInput.style.cssText = inputCss
 
-                row.append(addrInput, latInput, lngInput, gpsBtn, coordSpan, tenInput, sdtInput, ghichuInput, delBtn)
+                const addrRow = document.createElement('div')
+                addrRow.style.cssText = 'display:flex;gap:6px;align-items:center'
+                addrInput.style.cssText = 'flex:1;min-width:0;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px;background:white'
+                addrRow.append(addrInput, latInput, lngInput, gpsBtn, coordSpan)
+
+                if (containerId === 'nt-boc-list') {
+                    tenInput.addEventListener('input', checkBocDauDu)
+                    sdtInput.addEventListener('input', checkBocDauDu)
+                    addrInput.addEventListener('input', checkBocDauDu)
+                }
+
+                delBtn.style.cssText = 'font-size:13px;padding:4px 10px;width:auto'
+                const delWrapper = document.createElement('div')
+                delWrapper.style.cssText = 'display:flex;justify-content:flex-end'
+                delWrapper.appendChild(delBtn)
+
+                const bgColor = containerId === 'nt-boc-list' ? '#fdf0e6' : '#e8f5ee'
+                const borderColor = containerId === 'nt-boc-list' ? 'var(--warning)' : 'var(--success)'
+                row.style.cssText = `display:flex;flex-direction:column;gap:6px;margin-bottom:10px;padding:10px;background:${bgColor};border-left:3px solid ${borderColor};border-radius:var(--radius-sm)`
+                row.append(tenInput, sdtInput, addrRow, ghichuInput, delWrapper)
                 container.appendChild(row)
             }
 
             function addDiemBoc() { buildDiemRow('nt-boc-list') }
             function addDiemGiao() { buildDiemRow('nt-giao-list') }
+
+            function checkBocDauDu() {
+                const bocList = document.getElementById('nt-boc-list')
+                const firstRow = bocList.children[0]
+                const giaoBlock = document.getElementById('nt-giao-block')
+                if (!firstRow) { giaoBlock.style.display = 'none'; return }
+                const ten = firstRow.querySelector('.diem-ten')?.value.trim()
+                const sdt = firstRow.querySelector('.diem-sdt')?.value.trim()
+                const dia = firstRow.querySelector('.diem-dia-chi')?.value.trim()
+                giaoBlock.style.display = (ten && sdt && dia) ? '' : 'none'
+            }
 
             function setTripTab(mode) {
                 document.getElementById('nt-loai-luong').value = mode
@@ -701,6 +744,7 @@
 
                 addDiemBoc()
                 addDiemGiao()
+                document.getElementById('nt-giao-block').style.display = 'none'
 
                 document.getElementById('new-trip-modal').style.display = 'flex'
                 document.body.classList.add('modal-open')
@@ -996,7 +1040,7 @@
     </div>
 
     <div id="new-trip-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
-        <div style="background:var(--white);border-radius:var(--radius);padding:24px;width:640px;max-width:95%;max-height:90vh;overflow-y:auto;">
+        <div style="background:var(--white);border-radius:var(--radius);padding:24px;width:1200px;max-width:95%;max-height:90vh;overflow-y:auto;">
             <h3 style="margin:0 0 16px">➕ Tạo chuyến mới</h3>
 
             <div style="display:flex;gap:0;margin-bottom:16px;border-radius:var(--radius-sm);overflow:hidden;border:1.5px solid var(--border)">
@@ -1035,16 +1079,18 @@
                 </div>
             </div>
 
-            <div style="margin-bottom:12px">
+            <div id="diem-cols-wrapper" style="display:flex;gap:16px;margin-bottom:16px">
+            <div style="flex:1;min-width:0">
                 <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:6px">📦 Điểm bốc hàng</label>
                 <div id="nt-boc-list"></div>
                 <button class="btn btn-gray" style="margin-top:6px;font-size:13px;padding:6px 12px" onclick="addDiemBoc()">+ Điểm bốc</button>
             </div>
 
-            <div style="margin-bottom:16px">
+            <div id="nt-giao-block" style="flex:1;min-width:0">
                 <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:6px">🏁 Điểm giao hàng</label>
                 <div id="nt-giao-list"></div>
                 <button class="btn btn-gray" style="margin-top:6px;font-size:13px;padding:6px 12px" onclick="addDiemGiao()">+ Điểm giao</button>
+            </div>
             </div>
 
             <div style="display:flex;gap:10px;justify-content:flex-end">
