@@ -72,14 +72,16 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - `#nt-co-dinh-block` (ẩn khi `theo_km`) chứa label "Lương trả theo chuyến cố định (đ)" + `#nt-tien-chuyen` dùng `addDotFormat`; nằm ngay sau div Tuyến đường và trước div flex Xe+Tài xế trong modal DOM
 - Mode `theo_km`: gọi `POST /api/maps`, lookup `bang_luong_km` → `luong_chuyen`. Query: `.eq('loai_xe', xe.loai_xe).lte('km_tu', km).or('km_den.gte.'+km+',km_den.is.null').limit(1)` — dùng `.limit(1)` (KHÔNG `.maybeSingle()`), access `rateRows[0]`
 - Mode `co_dinh`: `luong_chuyen = tien_co_dinh`, skip Maps API
-- `buildDiemRow(containerId)`: input địa chỉ + hidden lat/lng + nút GPS + nút xóa; `parseMapsUrl()` detect Google Maps URL (pattern `/@lat,lng` hoặc `?query=lat,lng`) → auto-fill lat/lng + tô xanh; gõ text thường thì clear lat/lng
-- `collectDiems(containerId)`: trả `[{dia_chi, lat, lng}]`
+- `buildDiemRow(containerId)`: card-style layout (`flex-direction:column`, viền trái màu cam cho bốc / xanh cho giao). Các input: `.diem-ten` (tên liên hệ, bắt buộc), `.diem-sdt` (SĐT, `type=tel`, `inputMode=numeric`, `maxLength=10`, chỉ nhận số, bắt buộc), `.diem-dia-chi` (địa chỉ, text tự do — không phải URL) + hidden lat/lng + nút GPS, `.diem-ghichu` (ghi chú, tuỳ chọn), nút xóa ✕ align-right. `parseMapsUrl()` detect Google Maps URL (pattern `/@lat,lng` hoặc `?query=lat,lng`) → gọi `setCoord(lat, lng)` + clear `addrInput.value`; gõ text thường → chỉ reset `addrInput.style.color` (KHÔNG clear lat/lng). `setCoord(lat, lng)`: ghi latInput/lngInput, render badge "📍 Đã ghim toạ độ ✕" vào `coordSpan` — nút ✕ mới là cách duy nhất xóa tọa độ đã pin. GPS button cũng gọi `setCoord()`.
+- `collectDiems(containerId)`: trả `[{dia_chi, lat, lng, ten_lien_he, sdt_lien_he, ghi_chu}]`
+- `checkBocDauDu()`: progressive disclosure — ẩn `#nt-giao-block` cho đến khi row bốc đầu tiên có đủ `ten_lien_he` + `sdt_lien_he` + `dia_chi`. Được gọi từ input listeners của 3 field trên và từ `delBtn` của bốc row (chỉ khi `row.remove()` thật sự xảy ra — bên trong guard `container.children.length > 1`). Dùng `display=''` khi hiện (revert về UA default, ổn với flex container).
+- `#diem-cols-wrapper`: div bọc block bốc + `#nt-giao-block`, `display:flex;flex-direction:column;gap:16px`, mỗi block `flex:1;min-width:0`. `<head>` còn `@media (max-width:600px) { #diem-cols-wrapper { flex-direction:column } }` nhưng đây là **dead code** (desktop đã là column) — có thể xóa an toàn.
 - Waypoints cho Maps API: chỉ giao points (không trộn bốc), `giaoWaypoints = giao.slice(0,-1)`; reorder: `[...optimized_order.map(i => giaoWaypoints[i]), giaoDiems[last]]`
 - INSERT `trips` (trang_thai=`'dang_chay'`, trang_thai_giao=`'cho_nhan'`) + bulk INSERT `diem_hanh_trinh` (loại: `'boc_hang'`/`'giao_hang'`) + notify driver
 
 **Preview flow**
 - Nút "Tạo chuyến" trong `#new-trip-modal` gọi `previewTrip()` — KHÔNG gọi `submitNewTrip()`
-- `previewTrip()`: validate → build `pendingTripData = { xeId, driverId, xe, driver, diem_boc, diem_giao, optimized_order:[], mode, tien_co_dinh }` → đóng new-trip-modal → mở `#preview-trip-modal` → fire-and-forget `fetchKmPreview()` (chỉ khi `theo_km`)
+- `previewTrip()`: validate (địa chỉ + `ten_lien_he` + `sdt_lien_he` bắt buộc cho mọi điểm) → build `pendingTripData = { xeId, driverId, xe, driver, diem_boc, diem_giao, optimized_order:[], mode, tien_co_dinh }` → đóng new-trip-modal → mở `#preview-trip-modal` → fire-and-forget `fetchKmPreview()` (chỉ khi `theo_km`)
 - `fetchKmPreview()`: gọi `/api/maps` async; sau khi resolve guard `if (!pendingTripData) return` (race: user click "← Sửa lại" khi đang chờ); update `#preview-km` + `#preview-km-input`
 - `updateLuongPreview()`: đọc `#preview-km-input` → query `bang_luong_km` → hiện `#preview-luong`; gọi từ `fetchKmPreview()` và từ `oninput` trên `#preview-km-input`
 - `confirmCreateTrip()`: `co_dinh` → dùng `tien_co_dinh`; `theo_km` → đọc `#preview-km-input`, query lại `bang_luong_km` (không dùng cached value)
@@ -124,7 +126,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - `submitComplete(tripId, luongChuyen)`: dùng `luongChuyen` trực tiếp (không gọi `calcLuongChuyen`)
 
 **Diem hanh trinh**
-- `buildDiemHanhTrinhSection(tripId)` async — query `diem_hanh_trinh` order `thu_tu`, render badge loại (`'boc_hang'`→📦 / `'giao_hang'`→🚩), địa chỉ (GPS link nếu có lat/lng), trạng thái (✅ thumbnail / nút "✓ Xác nhận tại điểm")
+- `buildDiemHanhTrinhSection(tripId)` async — query `diem_hanh_trinh` order `thu_tu`, render badge loại (`'boc_hang'`→📦 / `'giao_hang'`→🚩), địa chỉ (GPS link nếu có lat/lng), contact row (tên + link `tel:` SĐT + ghi chú italic) chỉ render khi field có giá trị (null guard cho records cũ), trạng thái (✅ thumbnail / nút "✓ Xác nhận tại điểm")
 - Modal `#confirm-diem-modal`: camera-only + GPS bắt buộc
 - `submitConfirmDiem()`: validate photo → GPS → upload (bucket `receipts`) → UPDATE `diem_hanh_trinh` (trang_thai=`'hoan_thanh'`, anh_realtime=true) → nếu 0 pending thì UPDATE `trips.trang_thai_giao='dang_thuc_hien'` → re-render diem section in-place
 
@@ -449,11 +451,13 @@ bang_luong_km  (id, owner_id, loai_xe text NOT NULL, km_tu int, km_den int, so_t
                 -- owner-dashboard.html query: .eq('loai_xe', xe.loai_xe).lte('km_tu', km).or('km_den.gte.N,km_den.is.null').limit(1)
 diem_hanh_trinh (id, trip_id uuid, owner_id uuid, thu_tu int, loai text, dia_chi text,
                  lat numeric, lng numeric, trang_thai text DEFAULT 'chua_thuc_hien',
-                 anh_url text, anh_realtime bool, created_at timestamptz)
+                 anh_url text, anh_realtime bool, created_at timestamptz,
+                 ten_lien_he text, sdt_lien_he text, ghi_chu text)
                 -- loai: 'boc_hang' | 'giao_hang'
                 -- trang_thai: 'chua_thuc_hien' | 'hoan_thanh'
                 -- anh_url: public URL ảnh tại điểm (chụp bởi driver khi confirm)
                 -- anh_realtime: true khi driver confirm (camera-only)
+                -- ten_lien_he/sdt_lien_he/ghi_chu: thông tin liên hệ tại điểm; nullable (records cũ = null)
 push_subscriptions (user_id uuid PK, subscription_json jsonb)          -- Web Push subscription object; upsert on conflict user_id
 notify_settings    (user_id uuid PK, notify_new_trip bool, notify_complete bool, notify_expense bool, notify_maintenance bool)
                                                                         -- NULL row = tất cả bật; chỉ cần upsert khi owner thay đổi
@@ -483,6 +487,11 @@ notify_settings    (user_id uuid PK, notify_new_trip bool, notify_complete bool,
   );
   ALTER TABLE diem_hanh_trinh ADD COLUMN IF NOT EXISTS anh_url text;
   ALTER TABLE diem_hanh_trinh ADD COLUMN IF NOT EXISTS anh_realtime bool;
+
+  -- diem_hanh_trinh: thêm thông tin liên hệ tại điểm
+  ALTER TABLE diem_hanh_trinh ADD COLUMN IF NOT EXISTS ten_lien_he text;
+  ALTER TABLE diem_hanh_trinh ADD COLUMN IF NOT EXISTS sdt_lien_he text;
+  ALTER TABLE diem_hanh_trinh ADD COLUMN IF NOT EXISTS ghi_chu text;
 
   -- luong_thang: thêm toggle lương cơ bản (bỏ công thức ngày công)
   ALTER TABLE luong_thang ADD COLUMN IF NOT EXISTS ap_dung_luong_co_ban bool DEFAULT false;

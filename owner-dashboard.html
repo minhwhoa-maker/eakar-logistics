@@ -563,22 +563,16 @@
                 const addrInput = document.createElement('input')
                 addrInput.type = 'text'
                 addrInput.className = 'diem-dia-chi'
-                addrInput.placeholder = 'Địa chỉ'
+                addrInput.placeholder = 'VD: Kho cà phê chú Ba, Ea Kar'
                 addrInput.style.cssText = 'flex:1;min-width:140px;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px'
 
                 addrInput.addEventListener('input', () => {
                     const val = addrInput.value.trim()
                     const parsed = parseMapsUrl(val)
                     if (parsed) {
-                        latInput.value = parsed.lat
-                        lngInput.value = parsed.lng
-                        coordSpan.textContent = parsed.lat.toFixed(5) + ', ' + parsed.lng.toFixed(5)
-                        addrInput.value = parsed.lat.toFixed(5) + ', ' + parsed.lng.toFixed(5)
-                        addrInput.style.color = 'var(--success)'
+                        setCoord(parsed.lat, parsed.lng)
+                        addrInput.value = ''
                     } else {
-                        latInput.value = ''
-                        lngInput.value = ''
-                        coordSpan.textContent = ''
                         addrInput.style.color = ''
                     }
                 })
@@ -594,6 +588,23 @@
                 const coordSpan = document.createElement('span')
                 coordSpan.style.cssText = 'font-size:11px;color:var(--text-muted);white-space:nowrap'
 
+                function setCoord(lat, lng) {
+                    latInput.value = lat
+                    lngInput.value = lng
+                    coordSpan.textContent = ''
+                    const badge = document.createElement('span')
+                    badge.textContent = '📍 Đã ghim toạ độ '
+                    const clearBtn = document.createElement('span')
+                    clearBtn.textContent = '✕'
+                    clearBtn.style.cssText = 'cursor:pointer;font-weight:700;color:var(--danger)'
+                    clearBtn.addEventListener('click', () => {
+                        latInput.value = ''
+                        lngInput.value = ''
+                        coordSpan.textContent = ''
+                    })
+                    coordSpan.append(badge, clearBtn)
+                }
+
                 const gpsBtn = document.createElement('button')
                 gpsBtn.type = 'button'
                 gpsBtn.className = 'btn btn-gray'
@@ -604,9 +615,7 @@
                     gpsBtn.textContent = '...'
                     try {
                         const { lat, lng } = await getLocation()
-                        latInput.value = lat
-                        lngInput.value = lng
-                        coordSpan.textContent = lat.toFixed(5) + ', ' + lng.toFixed(5)
+                        setCoord(lat, lng)
                     } catch (e) {
                         showToast('Không lấy được GPS: ' + e.message, 'error')
                     } finally {
@@ -1079,7 +1088,7 @@
                 </div>
             </div>
 
-            <div id="diem-cols-wrapper" style="display:flex;gap:16px;margin-bottom:16px">
+            <div id="diem-cols-wrapper" style="display:flex;flex-direction:column;gap:16px;margin-bottom:16px">
             <div style="flex:1;min-width:0">
                 <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:6px">📦 Điểm bốc hàng</label>
                 <div id="nt-boc-list"></div>
