@@ -73,7 +73,9 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - `#nt-co-dinh-block` (ẩn khi `theo_km`) chứa label "Lương trả theo chuyến cố định (đ)" + `#nt-tien-chuyen` dùng `addDotFormat`; nằm ngay sau div Tuyến đường và trước div flex Xe+Tài xế trong modal DOM
 - Mode `theo_km`: gọi `POST /api/maps`, lookup `bang_luong_km` → `luong_chuyen`. Query: `.eq('loai_xe', xe.loai_xe).lte('km_tu', km).or('km_den.gte.'+km+',km_den.is.null').limit(1)` — dùng `.limit(1)` (KHÔNG `.maybeSingle()`), access `rateRows[0]`
 - Mode `co_dinh`: `luong_chuyen = tien_co_dinh`, skip Maps API
-- `buildDiemRow(containerId)`: card-style layout (`flex-direction:column`, viền trái màu cam cho bốc / xanh cho giao). Các input: `.diem-ten` (tên liên hệ, bắt buộc), `.diem-sdt` (SĐT, `type=tel`, `inputMode=numeric`, `maxLength=10`, chỉ nhận số, bắt buộc), `.diem-dia-chi` (địa chỉ, text tự do — không phải URL) + hidden lat/lng + nút GPS, `.diem-ghichu` (ghi chú, tuỳ chọn), nút xóa ✕ align-right. `parseMapsUrl()` detect Google Maps URL (pattern `/@lat,lng` hoặc `?query=lat,lng`) → gọi `setCoord(lat, lng)` + clear `addrInput.value`; gõ text thường → chỉ reset `addrInput.style.color` (KHÔNG clear lat/lng). `setCoord(lat, lng)`: ghi latInput/lngInput, render badge "📍 Đã ghim toạ độ ✕" vào `coordSpan` — nút ✕ mới là cách duy nhất xóa tọa độ đã pin. GPS button cũng gọi `setCoord()`.
+- **Paste hội thoại** (`#nt-conv-box`): owner paste đoạn chat Zalo vào `#nt-conv-text` → bấm "✨ Tách thành các điểm" → `handleConvPaste()` gọi `POST /api/parse-hoi-thoai` → nhận `{ diems:[{loai, ten, sdt, dia_chi, ghi_chu}] }` → clear list cũ → gọi `addDiemBoc()`/`addDiemGiao()` cho mỗi phần tử → `fillLastRow(containerId, d)` điền field vào row vừa tạo → `checkBocDauDu()` + `autoFillTuyen()`. `fillLastRow` nhận `{ten, sdt, dia_chi, ghi_chu}` (tên field từ LLM, KHÔNG phải `ten_lien_he`/`sdt_lien_he`).
+- **`autoFillTuyen()`** (async): sau khi địa chỉ bốc/giao thay đổi → gọi `deriveTuyen()` từ `route-pricing.js` → nếu nhận ra cả 2 tỉnh: điền `#nt-tuyen-duong` (nếu chưa edit tay) + fetch `GET /api/route-salary?maTuyen=...` (Supabase JWT header) → điền `#nt-tien-chuyen` (nếu chưa edit tay, chỉ `co_dinh` mode). **Cờ `_manuallyEdited`**: mỗi ô tuyến + lương có cờ DOM riêng; set `true` khi user gõ tay, reset `false` khi mở modal mới (`openNewTripModal`). Chống đè sau await: double-check `_manuallyEdited` lần 2 sau khi fetch resolve.
+- `buildDiemRow(containerId)`: card-style layout (`flex-direction:column`, viền trái màu cam cho bốc / xanh cho giao). Các input: `.diem-ten` (tên liên hệ, bắt buộc), `.diem-sdt` (SĐT, `type=tel`, `inputMode=numeric`, `maxLength=10`, chỉ nhận số, bắt buộc), `.diem-dia-chi` (địa chỉ, text tự do — không phải URL) + hidden lat/lng + nút GPS, `.diem-ghichu` (ghi chú, tuỳ chọn), nút xóa ✕ align-right. `parseMapsUrl()` detect Google Maps URL (pattern `/@lat,lng` hoặc `?query=lat,lng`) → gọi `setCoord(lat, lng)` + clear `addrInput.value`; gõ text thường → chỉ reset `addrInput.style.color` (KHÔNG clear lat/lng). `setCoord(lat, lng)`: ghi latInput/lngInput, render badge "📍 Đã ghim toạ độ ✕" vào `coordSpan` — nút ✕ mới là cách duy nhất xóa tọa độ đã pin. GPS button cũng gọi `setCoord()`. Input listener của `addrInput` gọi `autoFillTuyen()` sau mỗi thay đổi.
 - `collectDiems(containerId)`: trả `[{dia_chi, lat, lng, ten_lien_he, sdt_lien_he, ghi_chu}]`
 - `checkBocDauDu()`: progressive disclosure — ẩn `#nt-giao-block` cho đến khi row bốc đầu tiên có đủ `ten_lien_he` + `sdt_lien_he` + `dia_chi`. Được gọi từ input listeners của 3 field trên và từ `delBtn` của bốc row (chỉ khi `row.remove()` thật sự xảy ra — bên trong guard `container.children.length > 1`). Dùng `display=''` khi hiện (revert về UA default, ổn với flex container).
 - `#diem-cols-wrapper`: div bọc block bốc + `#nt-giao-block`, `display:flex;flex-direction:column;gap:16px`, mỗi block `flex:1;min-width:0`. `<head>` còn `@media (max-width:600px) { #diem-cols-wrapper { flex-direction:column } }` nhưng đây là **dead code** (desktop đã là column) — có thể xóa an toàn.
@@ -85,7 +87,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - `previewTrip()`: validate (địa chỉ + `ten_lien_he` + `sdt_lien_he` bắt buộc cho mọi điểm) → build `pendingTripData = { xeId, driverId, xe, driver, diem_boc, diem_giao, optimized_order:[], mode, tien_co_dinh }` → đóng new-trip-modal → mở `#preview-trip-modal` → fire-and-forget `fetchKmPreview()` (chỉ khi `theo_km`)
 - `fetchKmPreview()`: gọi `/api/maps` async; sau khi resolve guard `if (!pendingTripData) return` (race: user click "← Sửa lại" khi đang chờ); update `#preview-km` + `#preview-km-input`
 - `updateLuongPreview()`: đọc `#preview-km-input` → query `bang_luong_km` → hiện `#preview-luong`; gọi từ `fetchKmPreview()` và từ `oninput` trên `#preview-km-input`
-- `confirmCreateTrip()`: `co_dinh` → dùng `tien_co_dinh`; `theo_km` → đọc `#preview-km-input`, query lại `bang_luong_km` (không dùng cached value)
+- `confirmCreateTrip()`: `co_dinh` → dùng `tien_co_dinh`; `theo_km` → đọc `#preview-km-input`, query lại `bang_luong_km` (không dùng cached value). Sau khi trip insert thành công + `mode === 'co_dinh'` + `luong_chuyen > 0`: fire-and-forget `POST /api/route-salary` để nhớ giá tuyến này cho lần sau (skip nếu `maTuyen` chứa `'XX'`).
 - `closePreviewModal()`: đóng preview → mở lại new-trip-modal → `pendingTripData = null`
 - Cả 2 modals dùng inline styles (không có `.modal`/`.modal-content` CSS class)
 
@@ -233,6 +235,40 @@ Không có build step, không có test runner, không có lint. Quy trình:
 
 ---
 
+### route-pricing.js (browser-compatible, load qua `<script src="route-pricing.js">`)
+
+Chỉ dùng trong `owner-dashboard.html`. KHÔNG có `module.exports`/`require`.
+
+```
+boDau(s)                → bỏ dấu tiếng Việt + lowercase (dùng để so khớp alias)
+tinhTuDiaChi(diaChi)    → mã tỉnh (vd 'DLK') từ địa chỉ đầy đủ, match alias cuối chuỗi
+chuanHoaMaTinh(token)   → mã tỉnh từ token đơn ("Daklak", "ĐL", "SG"...)
+chuanHoaTuyen(chuoi)    → { maTuyen, tenTuyen, origin, dest, canhBao } từ chuỗi tự do ("ĐL-SG")
+deriveTuyen(diemBoc[], diemGiao[]) → same shape; derive từ diemBoc[0].diaChi + diemGiao[last].diaChi
+```
+
+- `TINH`: map mã → tên + alias (12 tỉnh: DLK, SGN, GLI, DNO, KTM, LDG, DNG, KHA, BDH, PYN, DNI, BDG)
+- `ALIAS_INDEX`: pre-built sorted array alias → mã (dài trước ngắn, tránh nhầm)
+- `maTuyen` chứa `'XX'` khi không nhận ra tỉnh — caller phải guard trước khi lưu DB
+- Thêm tỉnh mới: thêm vào `TINH` object là đủ, `ALIAS_INDEX` tự build khi load
+
+### validate-diem.js (ESM — import bởi `api/parse-hoi-thoai.js`)
+
+Tầng validate CỨNG chạy server-side sau khi LLM parse hội thoại. Không dùng ở browser.
+
+```
+validateSDT(raw)       → { ok, value, reason } — chuẩn hóa +84→0, chặn rác (toàn 1 số,
+                          dãy liên tiếp, đầu số không hợp lệ), trả value là 0xxxxxxxxx
+sanitizeText(raw, max) → strip control char, gộp whitespace, cap độ dài
+validateDiem(parsed)   → { ok, canhBao[], data: {tenLienHe, sdt, diaChi, ghiChu} }
+                          nhận camelCase; field lạ (luong, xe...) bị bỏ qua hoàn toàn
+```
+
+- `DAU_SO_HOP_LE`: Set 3-ký-tự prefix hợp lệ (Viettel/Mobifone/Vinaphone/Vietnamobile/Gmobile/Itelecom). Tự cập nhật khi nhà mạng được cấp thêm đầu số.
+- **Field mapping**: LLM trả snake_case (`ten`, `dia_chi`, `ghi_chu`) → caller map sang camelCase trước khi gọi `validateDiem`, rồi map lại snake_case sau. Xem `api/parse-hoi-thoai.js` để reference.
+- `canhBao` là mảng string rỗng nếu hợp lệ. SĐT sai → `data.sdt = ''` (owner gõ lại), nhưng `canhBao` vẫn có để hiển thị.
+- Client (`fillLastRow`) đọc `canhBao` từ API response và render badge cam `⚠️` dưới row — KHÔNG re-validate ở browser.
+
 ### shared.js (BẮT BUỘC dùng cho mọi page mới)
 ```
 createSb()              → tạo Supabase client với URL+anon key built-in
@@ -357,6 +393,7 @@ Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"typ
   - **Đã tạo trên Supabase. Schema:** `CREATE TABLE sessions (token text PRIMARY KEY, user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE, created_at timestamptz DEFAULT now())`. FK phải → `public.users` (KHÔNG `auth.users`); `token` phải PK/UNIQUE để verify-session `.maybeSingle()` an toàn.
   - **`users.sdt` đã có UNIQUE constraint**: lookup ở step query `users.id` dùng `.maybeSingle()` an toàn. (NULL được phép trùng trong UNIQUE Postgres nên owner row `sdt=NULL` không sao.)
 - **`api/verify-session.js`** — POST `{ token }`. Verify session token của driver và trả về thông tin user profile tương ứng. Flow: validate `token` → query `sessions` kết hợp join `users!user_id(id, role, full_name, sdt, owner_id)` để lấy profile của user đang liên kết với token session đó. Không kiểm tra expiry. Trả về thông tin profile định dạng JSON: `{ id, role, full_name, sdt, owner_id }`. Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
+- **`api/route-salary.js`** — GET/POST cho bộ nhớ lương theo tuyến (route-fixed, `co_dinh` mode). Auth: `Authorization: Bearer <supabase_jwt>` header → `sb.auth.getUser(token)` → lookup `users` by email → chỉ `role='owner'` qua được (`owner_id` hoàn toàn từ server, KHÔNG nhận từ client). `GET ?maTuyen=DLK-SGN` → `{ luongTaiXe: number | null }`. `POST { maTuyen, luongTaiXe }` → validate (không chứa `'XX'`, `luongTaiXe > 0`) → upsert `route_salary`. Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
 - **`api/parse-diem.js`** — POST `{ text }`. Parse text Zalo từ người gửi hàng → trích xuất thông tin liên hệ. Gọi OpenRouter (DeepSeek V3.2, `temperature: 0`) với few-shot SYSTEM_PROMPT. Trả `{ ten, sdt, dia_chi, ghi_chu }` — field thiếu là `''`, không bao giờ bịa. Validate `text` bắt buộc trước khi gọi API (trả 400 nếu rỗng — DeepSeek hallucinate khi input rỗng). Strip markdown fence từ response phòng thân. **Phân công công cụ**: endpoint này chỉ xử lý phần chữ; URL Google Maps/toạ độ là việc của `parseMapsUrl()` (regex) phía client — LLM không đụng tới. Env: `OPENROUTER_API_KEY`.
 - **`api/parse-hoi-thoai.js`** — POST `{ text }`. Parse đoạn hội thoại/tin nhắn vận chuyển → mảng nhiều điểm bốc/giao. Dùng cùng model + pattern với `parse-diem.js` nhưng trả `{ diems: [{loai, ten, sdt, dia_chi, ghi_chu}] }` — `loai`: `'boc'` hoặc `'giao'` (LLM đoán từ ngữ cảnh: "bốc/lấy/gom" → boc; "giao/trả/đến" → giao). Validate array trước khi trả. Khác `parse-diem.js`: max_tokens 800 (nhiều điểm hơn), trả array thay vì object đơn. Env: `OPENROUTER_API_KEY`.
 
@@ -374,8 +411,8 @@ OTP về Zalo không có push notification nếu người nhận chưa "Quan tâ
 |---|---|
 | `ANTHROPIC_API_KEY` | `api/chat.js` |
 | `VIETMAP_API_KEY` | `api/maps.js` |
-| `SUPABASE_URL` | `api/subscribe.js`, `api/notify.js`, `api/send-otp.js`, `api/verify-otp.js` |
-| `SUPABASE_SERVICE_KEY` | `api/subscribe.js`, `api/notify.js`, `api/send-otp.js`, `api/verify-otp.js` |
+| `SUPABASE_URL` | `api/subscribe.js`, `api/notify.js`, `api/send-otp.js`, `api/verify-otp.js`, `api/route-salary.js` |
+| `SUPABASE_SERVICE_KEY` | `api/subscribe.js`, `api/notify.js`, `api/send-otp.js`, `api/verify-otp.js`, `api/route-salary.js` |
 | `VAPID_SUBJECT` | `api/notify.js` |
 | `VAPID_PUBLIC_KEY` | `api/notify.js` |
 | `VAPID_PRIVATE_KEY` | `api/notify.js` |
@@ -465,6 +502,12 @@ diem_hanh_trinh (id, trip_id uuid, owner_id uuid, thu_tu int, loai text, dia_chi
 push_subscriptions (user_id uuid PK, subscription_json jsonb)          -- Web Push subscription object; upsert on conflict user_id
 notify_settings    (user_id uuid PK, notify_new_trip bool, notify_complete bool, notify_expense bool, notify_maintenance bool)
                                                                         -- NULL row = tất cả bật; chỉ cần upsert khi owner thay đổi
+route_salary       (owner_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+                    ma_tuyen text NOT NULL, luong_tai_xe bigint NOT NULL, updated_at timestamptz DEFAULT NOW(),
+                    PRIMARY KEY (owner_id, ma_tuyen))
+                   -- bộ nhớ lương tài xế theo tuyến đường chuẩn hóa (vd: 'DLK-SGN')
+                   -- owner_id từ server (JWT-verified), KHÔNG từ client; chỉ co_dinh mode dùng
+                   -- ma_tuyen derive từ deriveTuyen() trong route-pricing.js; không lưu nếu chứa 'XX'
 ```
 
 - `tai_xe_id` luôn = `users.id` (không phải Auth UUID).
