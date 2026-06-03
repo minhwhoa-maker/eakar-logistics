@@ -1,176 +1,146 @@
 // quantity-parser.js
-// Tách "khối lượng/số kiện" ra khỏi ghi chú tự do cho van-tai-v25
-// Logic: bắt số lượng trước -> phần còn lại mới là note
+// Nâng cấp: chuẩn hóa cách nói dân dã ("tấn rưỡi", "1 tấn 8") thành số thập phân,
+// và TRÍCH số lượng nằm LẪN trong câu dài (không còn dựa vào ngưỡng ratio nữa).
 
 // ----------------------------------------------------------------------------
-// 1. ĐƠN VỊ NHẬN DIỆN
+// 0. BẢNG QUY ĐỔI THANG TRỌNG LƯỢNG VN (về kg) — mỗi bậc gấp 10
 // ----------------------------------------------------------------------------
-// Thứ tự quan trọng: đơn vị dài/ghép phải đứng TRƯỚC đơn vị ngắn
-// (vd "pa-lét" trước "lét", "m3" trước "m") để regex không cắt nhầm.
-const DON_VI = [
-  'pa-lét', 'pa lét', 'pallet',
-  'container', 'cont',
-  'thùng', 'thung',
-  'kiện', 'kien',
-  'tấn', 'tan',
-  'tạ', 'ta',
-  'kg', 'ký', 'ki lô', 'kilo', 'kilôgam', 'kilogam',
-  'bao',
-  'khối', 'khoi', 'm3', 'm³',
-  'bó', 'bo',
-  'cây', 'cay',
-  'cuộn', 'cuon',
-  'can', 'phuy', 'phi',
-  'con', // gia súc/gia cầm
-];
-
-// Sắp xếp theo độ dài giảm dần để match đơn vị dài trước
-const DON_VI_PATTERN = DON_VI
-  .sort((a, b) => b.length - a.length)
-  .map(u => u.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) // escape ký tự đặc biệt (vd dấu -)
-  .join('|');
-
-// Bắt: [số][khoảng trắng tùy chọn][đơn vị]
-// - chấp nhận số thập phân kiểu VN: 2,5 hoặc 2.5
-// - \b ở cuối tránh dính chữ liền sau (vd "bao" trong "bảo")
-const QUANTITY_REGEX = new RegExp(
-  `(\\d+(?:[.,]\\d+)?)\\s*(${DON_VI_PATTERN})\\b`,
-  'iu' // i: không phân biệt hoa thường, u: unicode (cho tiếng Việt)
-);
-
-// ----------------------------------------------------------------------------
-// 2. CHUẨN HÓA ĐƠN VỊ
-// ----------------------------------------------------------------------------
-// Gom các biến thể về 1 dạng chuẩn để lưu DB cho nhất quán
-const DON_VI_CHUAN = {
-  'pa-lét': 'pallet', 'pa lét': 'pallet', 'pallet': 'pallet',
-  'container': 'cont', 'cont': 'cont',
-  'thùng': 'thùng', 'thung': 'thùng',
-  'kiện': 'kiện', 'kien': 'kiện',
-  'tấn': 'tấn', 'tan': 'tấn',
-  'tạ': 'tạ', 'ta': 'tạ',
-  'kg': 'kg', 'ký': 'kg', 'ki lô': 'kg', 'kilo': 'kg', 'kilôgam': 'kg', 'kilogam': 'kg',
-  'bao': 'bao',
-  'khối': 'khối', 'khoi': 'khối', 'm3': 'khối', 'm³': 'khối',
-  'bó': 'bó', 'bo': 'bó',
-  'cây': 'cây', 'cay': 'cây',
-  'cuộn': 'cuộn', 'cuon': 'cuộn',
-  'con': 'con', 'can': 'can', 'phuy': 'phuy', 'phi': 'phuy',
+const KG = {
+  'tấn': 1000, 'tan': 1000,
+  'tạ': 100, 'ta': 100,
+  'yến': 10, 'yen': 10,
+  'kg': 1, 'ký': 1, 'cân': 1, 'kilo': 1,
 };
+// đơn vị nào nằm trong thang trọng lượng (để biết "rưỡi"/"số lẻ" áp dụng được)
+const LA_TRONG_LUONG = Object.keys(KG);
 
-function chuanHoaDonVi(donVi) {
-  return DON_VI_CHUAN[donVi.toLowerCase().trim()] || donVi.toLowerCase().trim();
+// ----------------------------------------------------------------------------
+// 1. CHUẨN HÓA SỐ DÂN DÃ  ->  số thập phân + đơn vị
+// ----------------------------------------------------------------------------
+function chuanHoaSo(text) {
+  let s = text;
+
+  // (a) "rưỡi": [N] <unit> rưỡi  ->  (N|1)+0.5 <unit>
+  //     "tấn rưỡi"->1.5 tấn | "2 tấn rưỡi"->2.5 tấn | "tạ rưỡi"->1.5 tạ
+  //     áp dụng cả đơn vị đếm: "2 bao rưỡi"->2.5 bao
+  s = s.replace(
+    /(\d+)?\s*(tấn|tan|tạ|ta|yến|yen|kg|ký|cân|kilo|bao|thùng|thung|kiện|kien)\s*rưỡi/giu,
+    (m, n, u) => `${(n ? parseInt(n, 10) : 1) + 0.5} ${u}`
+  );
+
+  // (b) compound trọng lượng: X (tấn|tạ|yến) Y [đơn vị phụ?]
+  //     - có đơn vị phụ rõ  -> tính chính xác qua kg ("1 tạ 8 kg"->1.08 tạ)
+  //     - số lẻ trơ (1 chữ số) -> phần thập phân ("1 tấn 8"->1.8 tấn)
+  //     - chặn nhầm: nếu sau số lẻ là đơn vị ĐẾM (bao/thùng...) thì BỎ QUA
+  s = s.replace(
+    /(\d+)\s*(tấn|tan|tạ|ta|yến|yen)\s+(\d+)\s*(tạ|ta|yến|yen|kg|ký|cân|kilo)?(?!\s*(?:bao|thùng|thung|kiện|kien|pa|pallet|cont|cây|bó|cuộn|khối))/giu,
+    (m, x, u1, y, u2) => {
+      x = parseInt(x, 10);
+      y = parseInt(y, 10);
+      const k1 = KG[u1.toLowerCase()];
+      if (u2) {
+        const tongKg = x * k1 + y * KG[u2.toLowerCase()];
+        const dec = +(tongKg / k1).toFixed(3); // bỏ số 0 thừa
+        return `${dec} ${u1}`;
+      }
+      // số lẻ trơ: chỉ nhận 1 chữ số = phần thập phân
+      if (y >= 1 && y <= 9) return `${x}.${y} ${u1}`;
+      return m; // nhiều chữ số -> mơ hồ, để nguyên cho người xem tự xử
+    }
+  );
+
+  return s;
 }
 
 // ----------------------------------------------------------------------------
-// 3. HÀM CHÍNH: phân loại 1 dòng
+// 2. CHUẨN HÓA ĐƠN VỊ HIỂN THỊ (gom biến thể về 1 dạng)
 // ----------------------------------------------------------------------------
-// Trả về: { isQuantity, raw, soLuong, donVi } hoặc { isQuantity: false }
-function classifyLine(line) {
-  const text = line.trim();
-  if (!text) return { isQuantity: false };
+const DON_VI_CHUAN = {
+  'tan': 'tấn', 'tấn': 'tấn', 'ta': 'tạ', 'tạ': 'tạ', 'yen': 'yến', 'yến': 'yến',
+  'kg': 'kg', 'ký': 'kg', 'cân': 'kg', 'kilo': 'kg',
+  'bao': 'bao', 'thung': 'thùng', 'thùng': 'thùng', 'kien': 'kiện', 'kiện': 'kiện',
+  'pa-lét': 'pallet', 'pa lét': 'pallet', 'palét': 'pallet', 'pallet': 'pallet',
+  'cont': 'cont', 'container': 'cont',
+  'khối': 'khối', 'khoi': 'khối', 'm3': 'khối', 'm³': 'khối',
+  'bó': 'bó', 'bo': 'bó', 'cây': 'cây', 'cay': 'cây', 'cuộn': 'cuộn', 'cuon': 'cuộn',
+};
+function chuanHoaDonVi(u) {
+  return DON_VI_CHUAN[u.toLowerCase().trim()] || u.toLowerCase().trim();
+}
 
-  const match = text.match(QUANTITY_REGEX);
+// ----------------------------------------------------------------------------
+// 3. REGEX TRÍCH SỐ LƯỢNG (đơn vị hàng hóa — KHÔNG gồm đơn vị thời gian/đếm cuộc)
+// ----------------------------------------------------------------------------
+const UNIT_RE =
+  '(?:tấn|tan|tạ|ta|yến|yen|kg|ký|cân|kilo|bao|thùng|thung|kiện|kien|' +
+  'pa-?\\s?lét|palét|pallet|container|cont|khối|khoi|m3|m³|bó|cây|cuộn|cuon)';
+const QTY_RE = new RegExp(`(\\d+(?:[.,]\\d+)?)\\s*(${UNIT_RE})\\b`, 'giu');
 
-  // CHẶN FALSE POSITIVE:
-  // Nếu dòng dài hơn nhiều so với phần match -> nhiều khả năng là câu ghi chú
-  // có chứa số (vd "gọi trước 30p, bốc tầm 60 bao nha").
-  // Quy tắc: chỉ coi là "thuần số lượng" khi match chiếm phần lớn dòng.
-  if (match) {
-    const matchLen = match[0].length;
-    const ratio = matchLen / text.length;
+// ----------------------------------------------------------------------------
+// 4. HÀM CHÍNH: trích khối lượng (nhiều món) + ghi chú còn lại
+// ----------------------------------------------------------------------------
+// giuNguyenGhiChu = true  -> ghi chú giữ nguyên câu gốc (đọc dễ, nhưng trùng số)
+//                  false -> cắt phần số lượng ra khỏi ghi chú (gọn, có thể sót rác)
+function tachKhoiLuongVaGhiChu(line, { giuNguyenGhiChu = false } = {}) {
+  const goc = line.trim();
+  const norm = chuanHoaSo(goc);
 
-    // Dòng ngắn gọn kiểu "60 bao", "2,5 tấn" -> ratio cao -> là số lượng
-    // Dòng "hàng này để riêng, 60 bao" -> ratio thấp -> để vào note
-    // Ngưỡng 0.6 chỉnh được tùy data thực tế
-    if (ratio >= 0.6) {
-      return {
-        isQuantity: true,
-        raw: text,
-        soLuong: parseFloat(match[1].replace(',', '.')),
-        donVi: chuanHoaDonVi(match[2]),
-      };
-    }
+  const khoiLuong = [...norm.matchAll(QTY_RE)].map(mt => ({
+    text: mt[0].trim(),
+    soLuong: parseFloat(mt[1].replace(',', '.')),
+    donVi: chuanHoaDonVi(mt[2]),
+  }));
+
+  let ghiChu;
+  if (giuNguyenGhiChu) {
+    ghiChu = goc;
+  } else {
+    ghiChu = norm
+      .replace(QTY_RE, '')                       // bỏ các cụm số lượng
+      .replace(/\b(với|và|kèm|gồm|khoảng|chừng|tầm)\b\s*(?=,|$|\s*,)/giu, '') // bỏ liên từ mồ côi
+      .replace(/\s*,\s*,+/g, ', ')               // gộp dấu phẩy lặp
+      .replace(/^[\s,.\-–—]+|[\s,.\-–—]+$/g, '') // cắt rác đầu/cuối
+      .replace(/\s{2,}/g, ' ')
+      .trim();
   }
 
-  return { isQuantity: false };
+  return { khoiLuong: khoiLuong.length ? khoiLuong : null, ghiChu };
 }
 
-// ----------------------------------------------------------------------------
-// 4. ÁP DỤNG CHO 1 ĐIỂM (gồm nhiều dòng thừa sau tên/sđt/địa chỉ)
-// ----------------------------------------------------------------------------
-// Input: mảng các dòng "thừa" (sau khi đã tách tên/sđt/địa chỉ)
-// Output: { khoiLuong, ghiChu }
-function tachKhoiLuongVaGhiChu(dongThua) {
-  let khoiLuong = null;
-  const ghiChuLines = [];
-
+// gộp nhiều dòng thừa của 1 điểm
+function xuLyDiem(dongThua, opts) {
+  let khoiLuong = [];
+  const ghiChuArr = [];
   for (const dong of dongThua) {
-    const kq = classifyLine(dong);
-    if (kq.isQuantity && !khoiLuong) {
-      // Lấy dòng số lượng ĐẦU TIÊN bắt được.
-      // Nếu 1 điểm có nhiều dòng số lượng (hiếm), dòng sau đẩy xuống note.
-      khoiLuong = {
-        text: kq.raw,        // "60 bao"  -> hiển thị nguyên cho dễ đọc
-        soLuong: kq.soLuong, // 60        -> để cộng tổng / report
-        donVi: kq.donVi,     // "bao"     -> để nhóm theo đơn vị
-      };
-    } else {
-      ghiChuLines.push(dong.trim());
-    }
+    const r = tachKhoiLuongVaGhiChu(dong, opts);
+    if (r.khoiLuong) khoiLuong = khoiLuong.concat(r.khoiLuong);
+    if (r.ghiChu) ghiChuArr.push(r.ghiChu);
   }
-
   return {
-    khoiLuong,                              // null nếu không bắt được
-    ghiChu: ghiChuLines.join('. ').trim(),  // gộp phần còn lại
+    khoiLuong: khoiLuong.length ? khoiLuong : null,
+    ghiChu: ghiChuArr.join('. ').trim(),
   };
 }
 
-// ----------------------------------------------------------------------------
-// 5. (OPTIONAL - LÀM SAU) Quy đổi về kg để cộng tổng tải trọng
-// ----------------------------------------------------------------------------
-// CẢNH BÁO: chỉ chính xác khi biết mặt hàng. "1 bao" cà phê (~60kg) khác
-// "1 bao" gạo (~50kg). Đừng bật cái này cho tới khi có bảng quy đổi
-// chuẩn theo mặt hàng. Để đây làm khung thôi.
-const QUY_DOI_KG = {
-  'tấn': 1000,
-  'tạ': 100,
-  'kg': 1,
-  // 'bao': 60,   // <-- nguy hiểm: phụ thuộc mặt hàng, KHÔNG hardcode
-};
-
-function quyDoiKg(soLuong, donVi) {
-  const heSo = QUY_DOI_KG[donVi];
-  if (!heSo) return null; // không quy đổi được -> trả null, đừng đoán bừa
-  return soLuong * heSo;
-}
+module.exports = { chuanHoaSo, tachKhoiLuongVaGhiChu, xuLyDiem, QTY_RE };
 
 // ----------------------------------------------------------------------------
-// EXPORT
-// ----------------------------------------------------------------------------
-module.exports = {
-  classifyLine,
-  tachKhoiLuongVaGhiChu,
-  quyDoiKg,
-  QUANTITY_REGEX, // export ra để test riêng nếu cần
-};
-
-// ----------------------------------------------------------------------------
-// VÍ DỤ TEST NHANH (chạy: node quantity-parser.js)
+// TEST trên đúng data thật trong screenshot + mấy case bẫy
 // ----------------------------------------------------------------------------
 if (require.main === module) {
   const cases = [
-    ['60 bao'],
-    ['gọi trước 30p'],
-    ['hàng này để riêng đừng đè lên cà phê'],
-    ['2,5 tấn', 'gọi trước khi tới'],
-    ['bốc tầm 60 bao nha chú'], // câu dài có số -> nên vào note
-    ['15 kiện hàng', '500kg', 'để chỗ mát'],
+    '2 tấn rưỡi cà phê, bốc trước 7h sáng',
+    '80 bao tiêu, gọi trước 30 phút',
+    '15 thùng sầu riêng với 3 pa-lét, hàng dễ bể',
+    '500kg hàng khô',
+    'giao trước 5h sáng mai, gọi 2 cuộc trước', // KHÔNG được bắt số lượng nào
+    '1 tấn 8',                                   // -> 1.8 tấn
+    '1 tạ 8 kg',                                 // -> 1.08 tạ
+    'tấn rưỡi xi măng',                          // -> 1.5 tấn
+    '2 tấn 3 bao',                               // 3 bao là đơn vị đếm -> không gộp vào tấn
   ];
-
-  cases.forEach((c, i) => {
-    console.log(`\n--- Điểm ${i + 1} ---`);
-    console.log('Input :', c);
-    console.log('Output:', tachKhoiLuongVaGhiChu(c));
-  });
+  for (const c of cases) {
+    console.log('\nIN :', c);
+    console.log('OUT:', JSON.stringify(tachKhoiLuongVaGhiChu(c)));
+  }
 }
