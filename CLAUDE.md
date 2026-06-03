@@ -19,6 +19,7 @@ Fleet management app cho công ty vận tải Ea Kar — owner theo dõi chuyế
 Không có build step, không có test runner, không có lint. Quy trình:
 
 - **Edit**: sửa file `.html`/`.css`/`.js` trực tiếp.
+- **Test utility scripts**: `node quantity-parser.js` (chạy self-test ở cuối file — CommonJS, chưa wire vào app).
 - **Preview local**: mở file qua `file://` (đa số chạy được), hoặc `python -m http.server` để tránh lỗi service worker / relative path.
 - **Deploy**: `git push origin main` → Vercel auto-deploy.
 - **DB schema changes**: vào Supabase dashboard project `icwmtqfpbefntfxboofr` chỉnh tay (SQL editor hoặc Table editor).
@@ -357,6 +358,7 @@ Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"typ
   - **`users.sdt` đã có UNIQUE constraint**: lookup ở step query `users.id` dùng `.maybeSingle()` an toàn. (NULL được phép trùng trong UNIQUE Postgres nên owner row `sdt=NULL` không sao.)
 - **`api/verify-session.js`** — POST `{ token }`. Verify session token của driver và trả về thông tin user profile tương ứng. Flow: validate `token` → query `sessions` kết hợp join `users!user_id(id, role, full_name, sdt, owner_id)` để lấy profile của user đang liên kết với token session đó. Không kiểm tra expiry. Trả về thông tin profile định dạng JSON: `{ id, role, full_name, sdt, owner_id }`. Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
 - **`api/parse-diem.js`** — POST `{ text }`. Parse text Zalo từ người gửi hàng → trích xuất thông tin liên hệ. Gọi OpenRouter (DeepSeek V3.2, `temperature: 0`) với few-shot SYSTEM_PROMPT. Trả `{ ten, sdt, dia_chi, ghi_chu }` — field thiếu là `''`, không bao giờ bịa. Validate `text` bắt buộc trước khi gọi API (trả 400 nếu rỗng — DeepSeek hallucinate khi input rỗng). Strip markdown fence từ response phòng thân. **Phân công công cụ**: endpoint này chỉ xử lý phần chữ; URL Google Maps/toạ độ là việc của `parseMapsUrl()` (regex) phía client — LLM không đụng tới. Env: `OPENROUTER_API_KEY`.
+- **`api/parse-hoi-thoai.js`** — POST `{ text }`. Parse đoạn hội thoại/tin nhắn vận chuyển → mảng nhiều điểm bốc/giao. Dùng cùng model + pattern với `parse-diem.js` nhưng trả `{ diems: [{loai, ten, sdt, dia_chi, ghi_chu}] }` — `loai`: `'boc'` hoặc `'giao'` (LLM đoán từ ngữ cảnh: "bốc/lấy/gom" → boc; "giao/trả/đến" → giao). Validate array trước khi trả. Khác `parse-diem.js`: max_tokens 800 (nhiều điểm hơn), trả array thay vì object đơn. Env: `OPENROUTER_API_KEY`.
 
 ### Zalo OA / ZNS — vận hành
 
@@ -381,7 +383,7 @@ OTP về Zalo không có push notification nếu người nhận chưa "Quan tâ
 | `ZALO_REFRESH_TOKEN` | `api/send-otp.js` |
 | `ZALO_APP_ID` | `api/send-otp.js` |
 | `ZALO_APP_SECRET` | `api/send-otp.js` |
-| `OPENROUTER_API_KEY` | `api/parse-diem.js` |
+| `OPENROUTER_API_KEY` | `api/parse-diem.js`, `api/parse-hoi-thoai.js` |
 
 ## Database
 
