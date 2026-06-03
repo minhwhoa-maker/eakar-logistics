@@ -1,3 +1,5 @@
+import { validateDiem } from '../validate-diem.js'
+
 const MODEL = 'deepseek/deepseek-v3.2'
 
 const SYSTEM_PROMPT = `Đây là đoạn hội thoại/tin nhắn về việc vận chuyển hàng. Tách thành danh sách các ĐIỂM (địa điểm bốc hàng hoặc giao hàng).
@@ -75,12 +77,23 @@ export default async function handler(req, res) {
 
     const diems = parsed.map(d => {
         const item = (d && typeof d === 'object') ? d : {}
+        const loai = item.loai === 'giao' ? 'giao' : 'boc'
+
+        // map LLM snake_case → validator camelCase, rồi validate + sanitize
+        const v = validateDiem({
+            tenLienHe: item.ten,
+            diaChi:    item.dia_chi,
+            ghiChu:    item.ghi_chu,
+            sdt:       item.sdt,
+        })
+
         return {
-            loai: item.loai === 'giao' ? 'giao' : 'boc',
-            ten: item.ten || '',
-            sdt: item.sdt || '',
-            dia_chi: item.dia_chi || '',
-            ghi_chu: item.ghi_chu || ''
+            loai,
+            ten:     v.data.tenLienHe,
+            sdt:     v.data.sdt,
+            dia_chi: v.data.diaChi,
+            ghi_chu: v.data.ghiChu,
+            canhBao: v.canhBao.length > 0 ? v.canhBao : null,
         }
     })
 

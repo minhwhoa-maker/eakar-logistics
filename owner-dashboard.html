@@ -790,6 +790,12 @@
                 if (d.sdt) row.querySelector('.diem-sdt').value = String(d.sdt).replace(/\D/g, '').slice(0, 10)
                 if (d.dia_chi) row.querySelector('.diem-dia-chi').value = d.dia_chi
                 if (d.ghi_chu) row.querySelector('.diem-ghichu').value = d.ghi_chu
+                if (d.canhBao && d.canhBao.length > 0) {
+                    const warn = document.createElement('div')
+                    warn.style.cssText = 'color:var(--warning);font-size:11px;margin-top:2px;padding:2px 4px;background:#fff3e0;border-radius:4px'
+                    warn.textContent = '⚠️ ' + d.canhBao.join(' | ')
+                    row.appendChild(warn)
+                }
             }
 
             async function handleConvPaste() {
