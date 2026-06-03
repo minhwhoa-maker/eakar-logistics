@@ -8,6 +8,7 @@
         <link rel="manifest" href="manifest.json">
         <link rel="stylesheet" href="style.css">
         <script src="shared.js"></script>
+        <script src="route-pricing.js"></script>
         <style>
             @media (max-width: 600px) {
                 #report-body td:nth-child(5),
@@ -575,6 +576,7 @@
                     } else {
                         addrInput.style.color = ''
                     }
+                    autoFillTuyen()
                 })
 
                 const latInput = document.createElement('input')
@@ -841,7 +843,8 @@
                     }
 
                     checkBocDauDu()
-                    
+                    autoFillTuyen()
+
                     document.getElementById('nt-conv-box').style.display = 'none'
                     document.getElementById('nt-conv-text').value = ''
                 } catch (err) {
@@ -850,6 +853,45 @@
                     btn.disabled = false
                     btn.textContent = '✨ Tách thành các điểm'
                 }
+            }
+
+            async function autoFillTuyen() {
+                const el = document.getElementById('nt-tuyen-duong')
+                const bocList = document.getElementById('nt-boc-list')
+                const giaoList = document.getElementById('nt-giao-list')
+                const firstBocAddr = bocList.children[0]?.querySelector('.diem-dia-chi')?.value.trim() || ''
+                const lastGiaoRow = giaoList.children[giaoList.children.length - 1]
+                const lastGiaoAddr = lastGiaoRow?.querySelector('.diem-dia-chi')?.value.trim() || ''
+                if (!firstBocAddr || !lastGiaoAddr) return
+
+                const { tenTuyen, maTuyen, origin, dest } = deriveTuyen(
+                    [{ diaChi: firstBocAddr }],
+                    [{ diaChi: lastGiaoAddr }]
+                )
+                if (!origin || !dest) return
+
+                if (!el._manuallyEdited) el.value = tenTuyen
+
+                const mode = document.getElementById('nt-loai-luong').value
+                if (mode !== 'co_dinh') return
+
+                const tienEl = document.getElementById('nt-tien-chuyen')
+                if (!tienEl || tienEl._manuallyEdited) return
+
+                try {
+                    const { data: { session } } = await sb.auth.getSession()
+                    if (!session?.access_token) return
+                    const r = await fetch(`/api/route-salary?maTuyen=${encodeURIComponent(maTuyen)}`, {
+                        headers: { 'Authorization': 'Bearer ' + session.access_token }
+                    })
+                    if (!r.ok) return
+                    const { luongTaiXe } = await r.json()
+                    if (luongTaiXe > 0 && !tienEl._manuallyEdited) {
+                        const raw = String(luongTaiXe)
+                        tienEl.dataset.rawValue = raw
+                        tienEl.value = raw.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+                    }
+                } catch (_) { /* network error, bỏ qua */ }
             }
 
             function setTripTab(mode) {
@@ -901,7 +943,18 @@
                 setTripTab('co_dinh')
                 const tienEl = document.getElementById('nt-tien-chuyen')
                 if (!tienEl._dafInit) { addDotFormat(tienEl); tienEl._dafInit = true }
-                document.getElementById('nt-tuyen-duong').value = ''
+                const tuyenEl = document.getElementById('nt-tuyen-duong')
+                tuyenEl.value = ''
+                tuyenEl._manuallyEdited = false
+                if (!tuyenEl._initDone) {
+                    tuyenEl.addEventListener('input', () => { tuyenEl._manuallyEdited = !!tuyenEl.value.trim() })
+                    tuyenEl._initDone = true
+                }
+                tienEl._manuallyEdited = false
+                if (!tienEl._initDone) {
+                    tienEl.addEventListener('input', () => { tienEl._manuallyEdited = !!tienEl.value.trim() })
+                    tienEl._initDone = true
+                }
                 tienEl.value = ''
                 tienEl.dataset.rawValue = ''
 
@@ -1003,8 +1056,13 @@
                     tuyenDuong = document.getElementById('nt-tuyen-duong').value.trim()
                     if (!tuyenDuong) { showToast('Vui lòng nhập tuyến đường!', 'error'); return }
                 } else {
-                    const allAddrs = [...bocDiems.map(d => d.dia_chi), ...giaoDiems.map(d => d.dia_chi)]
-                    tuyenDuong = allAddrs.join(' → ')
+                    const derived = deriveTuyen(
+                        bocDiems.map(d => ({ diaChi: d.dia_chi })),
+                        giaoDiems.map(d => ({ diaChi: d.dia_chi }))
+                    )
+                    tuyenDuong = (derived.origin && derived.dest)
+                        ? derived.tenTuyen
+                        : [...bocDiems.map(d => d.dia_chi), ...giaoDiems.map(d => d.dia_chi)].join(' → ')
                 }
                 document.getElementById('preview-tuyen-duong').value = tuyenDuong
 
@@ -1163,6 +1221,27 @@
                     })
 
                     showToast('Tạo chuyến thành công', 'success')
+
+                    if (mode === 'co_dinh' && luong_chuyen > 0) {
+                        const { maTuyen: mt } = deriveTuyen(
+                            diem_boc.map(d => ({ diaChi: d.dia_chi })),
+                            diem_giao.map(d => ({ diaChi: d.dia_chi }))
+                        )
+                        if (mt && !mt.includes('XX')) {
+                            sb.auth.getSession().then(({ data: { session } }) => {
+                                if (!session?.access_token) return
+                                fetch('/api/route-salary', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Authorization': 'Bearer ' + session.access_token
+                                    },
+                                    body: JSON.stringify({ maTuyen: mt, luongTaiXe: luong_chuyen })
+                                })
+                            })
+                        }
+                    }
+
                     document.getElementById('preview-trip-modal').style.display = 'none'
                     document.body.classList.remove('modal-open')
                     pendingTripData = null
