@@ -743,7 +743,7 @@
                         } else {
                             const data = await res.json()
                             if (data.ten) tenInput.value = data.ten
-                            if (data.sdt) sdtInput.value = data.sdt.replace(/\D/g, '').slice(0, 10)
+                            if (data.sdt) sdtInput.value = String(data.sdt).replace(/\D/g, '').slice(0, 10)
                             if (data.dia_chi) addrInput.value = data.dia_chi
                             if (data.ghi_chu) ghichuInput.value = data.ghi_chu
                             if (containerId === 'nt-boc-list') checkBocDauDu()
@@ -779,6 +779,77 @@
                 const sdt = firstRow.querySelector('.diem-sdt')?.value.trim()
                 const dia = firstRow.querySelector('.diem-dia-chi')?.value.trim()
                 giaoBlock.style.display = (ten && sdt && dia) ? '' : 'none'
+            }
+
+            function fillLastRow(containerId, d) {
+                const row = document.getElementById(containerId).lastElementChild
+                if (!row) return
+                if (d.ten) row.querySelector('.diem-ten').value = d.ten
+                if (d.sdt) row.querySelector('.diem-sdt').value = String(d.sdt).replace(/\D/g, '').slice(0, 10)
+                if (d.dia_chi) row.querySelector('.diem-dia-chi').value = d.dia_chi
+                if (d.ghi_chu) row.querySelector('.diem-ghichu').value = d.ghi_chu
+            }
+
+            async function handleConvPaste() {
+                const raw = document.getElementById('nt-conv-text').value.trim()
+                if (!raw) {
+                    showToast('Chưa có nội dung', 'error')
+                    return
+                }
+                const btn = document.getElementById('btn-conv-parse')
+                btn.disabled = true
+                btn.textContent = '⏳ Đang tách...'
+
+                try {
+                    const res = await fetch('/api/parse-hoi-thoai', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: raw })
+                    })
+                    if (!res.ok) {
+                        showToast('Không tách được, vui lòng nhập tay', 'error')
+                        return
+                    }
+                    const { diems } = await res.json()
+                    if (!Array.isArray(diems) || diems.length === 0) {
+                        showToast('Không tìm thấy điểm nào', 'error')
+                        return
+                    }
+
+                    const bocs = diems.filter(d => d.loai === 'boc')
+                    const giaos = diems.filter(d => d.loai === 'giao')
+
+                    document.getElementById('nt-boc-list').textContent = ''
+                    document.getElementById('nt-giao-list').textContent = ''
+
+                    if (bocs.length === 0) {
+                        addDiemBoc()
+                    } else {
+                        bocs.forEach(d => {
+                            addDiemBoc()
+                            fillLastRow('nt-boc-list', d)
+                        })
+                    }
+
+                    if (giaos.length === 0) {
+                        addDiemGiao()
+                    } else {
+                        giaos.forEach(d => {
+                            addDiemGiao()
+                            fillLastRow('nt-giao-list', d)
+                        })
+                    }
+
+                    checkBocDauDu()
+                    
+                    document.getElementById('nt-conv-box').style.display = 'none'
+                    document.getElementById('nt-conv-text').value = ''
+                } catch (err) {
+                    showToast('Không tách được, vui lòng nhập tay', 'error')
+                } finally {
+                    btn.disabled = false
+                    btn.textContent = '✨ Tách thành các điểm'
+                }
             }
 
             function setTripTab(mode) {
@@ -837,6 +908,11 @@
                 addDiemBoc()
                 addDiemGiao()
                 document.getElementById('nt-giao-block').style.display = 'none'
+
+                const convBox = document.getElementById('nt-conv-box')
+                if (convBox) convBox.style.display = 'none'
+                const convText = document.getElementById('nt-conv-text')
+                if (convText) convText.value = ''
 
                 document.getElementById('new-trip-modal').style.display = 'flex'
                 document.body.classList.add('modal-open')
@@ -1168,6 +1244,17 @@
                     <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Tài xế</label>
                     <div id="nt-driver-display" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:var(--text-muted);background:var(--bg);box-sizing:border-box">-- Chọn xe trước --</div>
                     <input type="hidden" id="nt-driver">
+                </div>
+            </div>
+
+            <div style="margin-bottom:12px">
+                <button type="button" class="btn" onclick="document.getElementById('nt-conv-box').style.display = document.getElementById('nt-conv-box').style.display === 'none' ? 'block' : 'none'; if(document.getElementById('nt-conv-box').style.display === 'block') document.getElementById('nt-conv-text').focus()">💬 Dán hội thoại</button>
+            </div>
+            <div id="nt-conv-box" style="display:none;margin-bottom:16px;padding:12px;background:#f8f9fa;border:1.5px solid var(--border);border-radius:var(--radius-sm)">
+                <textarea id="nt-conv-text" placeholder="Dán cả đoạn tin nhắn / hội thoại đặt hàng vào đây..." rows="5" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px;margin-bottom:8px"></textarea>
+                <div style="display:flex;gap:8px">
+                    <button type="button" class="btn" id="btn-conv-parse" onclick="handleConvPaste()">✨ Tách thành các điểm</button>
+                    <button type="button" class="btn btn-gray" onclick="document.getElementById('nt-conv-box').style.display='none'; document.getElementById('nt-conv-text').value=''">Hủy</button>
                 </div>
             </div>
 
