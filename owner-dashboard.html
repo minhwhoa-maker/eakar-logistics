@@ -543,6 +543,7 @@
             let xeList = []
             let driverList = []
             let pendingTripData = null
+            let _tuyenFetchSeq = 0
 
             function parseMapsUrl(text) {
                 // Pattern 1: /@lat,lng,zoom
@@ -884,6 +885,8 @@
                 const tienEl = document.getElementById('nt-tien-chuyen')
                 if (!tienEl || tienEl._manuallyEdited) return
 
+                const mySeq = ++_tuyenFetchSeq
+
                 try {
                     const { data: { session } } = await sb.auth.getSession()
                     if (!session?.access_token) return
@@ -892,6 +895,7 @@
                     })
                     if (!r.ok) return
                     const { luongTaiXe } = await r.json()
+                    if (mySeq !== _tuyenFetchSeq) return   // fetch cũ, đã có lần mới hơn → bỏ
                     if (luongTaiXe > 0 && !tienEl._manuallyEdited) {
                         const raw = String(luongTaiXe)
                         tienEl.dataset.rawValue = raw
