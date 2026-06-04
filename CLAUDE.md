@@ -137,6 +137,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - EXPENSE_TYPES: `{ xang, bai_xe, khac }` — `sua_xe` đã bỏ (dùng `bao_duong`)
 - Thêm chi phí: camera-only, `anh_realtime=true`, `is_legacy=false`. Sửa: đổi ảnh → camera-only `anh_realtime=true`; xóa ảnh → `anh_realtime=null`; giữ nguyên → giữ giá trị cũ
 - `#btn-bao-duong` → `openMaintenanceModal()` → INSERT `bao_duong` + GPS bắt buộc + `notifyOwner('maintenance', ...)`
+- Modal bảo dưỡng có nút "✨ Tự điền loại & bộ phận" (`#btn-maint-ai`) → `autoFillMaintLoai()`: đọc `#maint-mota`, `POST /api/phan-loai-bao-duong` → set `#maint-loai` (nếu loai ∈ enum) + `#maint-bophan` (nếu non-rỗng). Disable nút + đổi text "Đang xử lý..." trong try/finally; lỗi/`!r.ok`/network → toast nhẹ "Không gợi ý được, chọn tay nhé", KHÔNG chặn. Tài xế review tay, không validate thêm client.
 
 **Local helpers**: `numberToVietnamese(n)` (capitalize first letter), `addMoneyHint(input)` (dấu chấm nghìn, raw digits trong `input.dataset.rawValue`). Submit functions đọc `dataset.rawValue || .value`
 
@@ -180,6 +181,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - `PRESET_PARTS`: array 21 bộ phận hardcode (file-level const)
 - Form có `maint-bophan-{id}` (text input với datalist `bophan-suggestions-{id}`) + `maint-ngaytiep-{id}` (date)
 - `loadMaintenance()`: populate datalist từ lịch sử + PRESET_PARTS (unique merge); filter `<select>` theo `bo_phan`
+- `loadMaintenanceModal()`: trước bảng lịch sử phẳng, render `summaryContainer` "📊 Tổng hợp theo bộ phận" — rollup group theo `bo_phan` (null → nhóm "Khác"), mỗi nhóm `{soLan, lanGanNhat, tongChiPhi, cacNgay[]}`, sort `soLan` desc. Date parse thủ công từ `YYYY-MM-DD` (KHÔNG dùng `formatDate` để né bug timezone của `date` column). Badge cảnh báo `⚠️ thay lại sau N ngày` (màu `--warning`) khi nhóm có `soLan >= 2` và khoảng cách giữa 2 lần gần nhất `> 0 && < NGUONG_THAY_LAI` (30 ngày). Badge chỉ hiển thị, KHÔNG chặn/kết luận.
 - Bảng history join: `.select('*, tai_xe:users!tai_xe_id(full_name)')` — "Người nhập": `'driver'` → `👤 {full_name}`, `'owner'` → `🏢 Chủ xe`
 - Cột Mô tả append `→ Xem chuyến` (mở tab mới) nếu `trip_id` có giá trị
 - `loadVehicles()` query `bao_duong.ngay_tiep_theo`; badge: `⚠️ N ngày` (0–7 ngày), `🔴 Quá hạn N ngày` (< 0)
@@ -396,6 +398,7 @@ Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"typ
 - **`api/route-salary.js`** — GET/POST cho bộ nhớ lương theo tuyến (route-fixed, `co_dinh` mode). Auth: `Authorization: Bearer <supabase_jwt>` header → `sb.auth.getUser(token)` → lookup `users` by email → chỉ `role='owner'` qua được (`owner_id` hoàn toàn từ server, KHÔNG nhận từ client). `GET ?maTuyen=DLK-SGN` → `{ luongTaiXe: number | null }`. `POST { maTuyen, luongTaiXe }` → validate (không chứa `'XX'`, `luongTaiXe > 0`) → upsert `route_salary`. Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
 - **`api/parse-diem.js`** — POST `{ text }`. Parse text Zalo từ người gửi hàng → trích xuất thông tin liên hệ. Gọi OpenRouter (DeepSeek V3.2, `temperature: 0`) với few-shot SYSTEM_PROMPT. Trả `{ ten, sdt, dia_chi, ghi_chu }` — field thiếu là `''`, không bao giờ bịa. Validate `text` bắt buộc trước khi gọi API (trả 400 nếu rỗng — DeepSeek hallucinate khi input rỗng). Strip markdown fence từ response phòng thân. **Phân công công cụ**: endpoint này chỉ xử lý phần chữ; URL Google Maps/toạ độ là việc của `parseMapsUrl()` (regex) phía client — LLM không đụng tới. Env: `OPENROUTER_API_KEY`.
 - **`api/parse-hoi-thoai.js`** — POST `{ text }`. Parse đoạn hội thoại/tin nhắn vận chuyển → mảng nhiều điểm bốc/giao. Dùng cùng model + pattern với `parse-diem.js` nhưng trả `{ diems: [{loai, ten, sdt, dia_chi, ghi_chu}] }` — `loai`: `'boc'` hoặc `'giao'` (LLM đoán từ ngữ cảnh: "bốc/lấy/gom" → boc; "giao/trả/đến" → giao). Validate array trước khi trả. Khác `parse-diem.js`: max_tokens 800 (nhiều điểm hơn), trả array thay vì object đơn. Env: `OPENROUTER_API_KEY`.
+- **`api/phan-loai-bao-duong.js`** — POST `{ text }`. Phân loại mô tả bảo dưỡng tiếng Việt của tài xế → `{ loai, bo_phan }`. Dùng cùng model + pattern với `parse-diem.js` (DeepSeek V3.2, `temperature: 0`, strip markdown fence, 400 nếu text rỗng). `loai` ∈ `hong_hoc`/`linh_kien`/`lop_xe`/`dinh_ky` (few-shot: lốp→lop_xe, phụ tùng→linh_kien, sự cố→hong_hoc, định kỳ/đăng kiểm→dinh_ky). `bo_phan` ưu tiên khớp 21 PRESET_PARTS (liệt kê trong prompt), không bịa. **Validate server-side sau parse** (không tin LLM): `loai` không thuộc enum → ép `''`; `bo_phan` ép string + strip control char + cap 100 ký tự. **`PRESET_PARTS` bị duplicate** giữa file này và `vehicles.html` (sửa list phải đồng bộ 2 nơi). Wired vào `driver-page.html` (nút "✨ Tự điền loại & bộ phận" trong modal bảo dưỡng → `autoFillMaintLoai()`). Env: `OPENROUTER_API_KEY`.
 
 ### Zalo OA / ZNS — vận hành
 
@@ -420,7 +423,7 @@ OTP về Zalo không có push notification nếu người nhận chưa "Quan tâ
 | `ZALO_REFRESH_TOKEN` | `api/send-otp.js` |
 | `ZALO_APP_ID` | `api/send-otp.js` |
 | `ZALO_APP_SECRET` | `api/send-otp.js` |
-| `OPENROUTER_API_KEY` | `api/parse-diem.js`, `api/parse-hoi-thoai.js` |
+| `OPENROUTER_API_KEY` | `api/parse-diem.js`, `api/parse-hoi-thoai.js`, `api/phan-loai-bao-duong.js` |
 
 ## Database
 

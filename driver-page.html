@@ -99,6 +99,7 @@
             <div class="form-group">
                 <label>Mô tả</label>
                 <input type="text" id="maint-mota">
+                <button type="button" class="btn btn-sm" id="btn-maint-ai" onclick="autoFillMaintLoai()" style="margin-top:6px">✨ Tự điền loại & bộ phận</button>
             </div>
             <div class="form-group">
                 <label>Chi phí</label>
@@ -1199,6 +1200,35 @@
         document.getElementById('maintenance-modal').style.display = 'none'
         document.body.classList.remove('modal-open')
         maintReceiptFile = null
+    }
+
+    async function autoFillMaintLoai() {
+        const text = document.getElementById('maint-mota').value.trim()
+        if (!text) { showToast('Nhập mô tả trước', 'error'); return }
+
+        const btn = document.getElementById('btn-maint-ai')
+        const oldText = btn.textContent
+        btn.disabled = true
+        btn.textContent = 'Đang xử lý...'
+        try {
+            const r = await fetch('/api/phan-loai-bao-duong', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text })
+            })
+            if (!r.ok) { showToast('Không gợi ý được, chọn tay nhé'); return }
+            const { loai, bo_phan } = await r.json()
+            if (['hong_hoc', 'linh_kien', 'lop_xe', 'dinh_ky'].includes(loai)) {
+                document.getElementById('maint-loai').value = loai
+            }
+            if (bo_phan) document.getElementById('maint-bophan').value = bo_phan
+            showToast('Đã gợi ý — kiểm tra lại trước khi lưu', 'success')
+        } catch {
+            showToast('Không gợi ý được, chọn tay nhé')
+        } finally {
+            btn.disabled = false
+            btn.textContent = oldText
+        }
     }
 
     async function submitMaintenance() {

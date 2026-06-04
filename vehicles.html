@@ -651,6 +651,53 @@
             const loaiLabels = Object.fromEntries(maintenanceTypes)
             historyContainer.textContent = ''
 
+            // --- rollup theo bộ phận ---
+            const NGUONG_THAY_LAI = 30
+            const rollupMap = {}
+            data.forEach(m => {
+                const key = m.bo_phan || 'Khác'
+                if (!rollupMap[key]) rollupMap[key] = { soLan: 0, lanGanNhat: null, tongChiPhi: 0, cacNgay: [] }
+                rollupMap[key].soLan++
+                if (m.ngay && (!rollupMap[key].lanGanNhat || m.ngay > rollupMap[key].lanGanNhat)) {
+                    rollupMap[key].lanGanNhat = m.ngay
+                }
+                if (m.ngay) rollupMap[key].cacNgay.push(m.ngay)
+                if (m.chi_phi) rollupMap[key].tongChiPhi += m.chi_phi
+            })
+            const rollupRows = Object.entries(rollupMap).sort((a, b) => b[1].soLan - a[1].soLan)
+
+            const summaryContainer = document.createElement('div')
+            summaryContainer.style.marginBottom = '20px'
+            const summaryTitle = document.createElement('div')
+            summaryTitle.style.cssText = 'font-weight:600;margin-bottom:8px;font-size:0.95em'
+            summaryTitle.textContent = '📊 Tổng hợp theo bộ phận'
+            summaryContainer.appendChild(summaryTitle)
+
+            const summaryTable = document.createElement('table')
+            summaryTable.style.width = '100%'
+            const sThead = document.createElement('thead')
+            sThead.innerHTML = '<tr><th>Bộ phận</th><th>Số lần</th><th>Lần gần nhất</th><th>Tổng chi phí</th></tr>'
+            const sTbody = document.createElement('tbody')
+            rollupRows.forEach(([boPhan, { soLan, lanGanNhat, tongChiPhi, cacNgay }]) => {
+                const tr = document.createElement('tr')
+                const ngayStr = lanGanNhat
+                    ? (() => { const [y, m, d] = lanGanNhat.split('-'); return `${d}/${m}/${y.slice(2)}` })()
+                    : '—'
+                let badge = ''
+                if (soLan >= 2 && cacNgay.length >= 2) {
+                    const khoangCach = Math.round((Date.parse(cacNgay[0]) - Date.parse(cacNgay[1])) / 86400000)
+                    if (khoangCach > 0 && khoangCach < NGUONG_THAY_LAI) {
+                        badge = `<div style="color:var(--warning);font-size:0.8em;margin-top:2px">⚠️ thay lại sau ${khoangCach} ngày</div>`
+                    }
+                }
+                tr.innerHTML = `<td>${boPhan}${badge}</td><td>${soLan}</td><td>${ngayStr}</td><td>${tongChiPhi > 0 ? formatMoney(tongChiPhi) : '—'}</td>`
+                sTbody.appendChild(tr)
+            })
+            summaryTable.append(sThead, sTbody)
+            summaryContainer.appendChild(summaryTable)
+            historyContainer.appendChild(summaryContainer)
+            // --- end rollup ---
+
             const tableContainer = document.createElement('div')
             historyContainer.appendChild(tableContainer)
 
