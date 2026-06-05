@@ -97,6 +97,14 @@
                 </select>
             </div>
             <div class="form-group">
+                <label>Hình thức sửa</label>
+                <select id="maint-hinh-thuc" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:15px;color:#1a1a2e;background:white">
+                    <option value="">-- Chọn hình thức --</option>
+                    <option value="tai_gara">Tại gara</option>
+                    <option value="luu_dong">Lưu động (gọi thợ ra xe)</option>
+                </select>
+            </div>
+            <div class="form-group">
                 <label>Mô tả</label>
                 <input type="text" id="maint-mota">
                 <button type="button" class="btn btn-sm" id="btn-maint-ai" onclick="autoFillMaintLoai()" style="margin-top:6px">✨ Tự điền loại & bộ phận</button>
@@ -1172,6 +1180,7 @@
         document.getElementById('maint-ngay').value = new Date().toISOString().split('T')[0]
         document.getElementById('maint-bophan').value = ''
         document.getElementById('maint-loai').value = 'hong_hoc'
+        document.getElementById('maint-hinh-thuc').value = ''
         document.getElementById('maint-mota').value = ''
         const chiPhiEl = document.getElementById('maint-chiphi')
         chiPhiEl.value = ''
@@ -1236,11 +1245,13 @@
         const bo_phan = document.getElementById('maint-bophan').value.trim()
         const loai = document.getElementById('maint-loai').value
         const mo_ta = document.getElementById('maint-mota').value.trim()
+        const hinh_thuc_sua = document.getElementById('maint-hinh-thuc').value
         const chiPhiEl = document.getElementById('maint-chiphi')
         const chiPhiVal = chiPhiEl.dataset.rawValue || chiPhiEl.value
         const chi_phi = Number(chiPhiVal)
         if (!ngay) { showToast('Vui lòng chọn ngày', 'error'); return }
         if (!bo_phan) { showToast('Vui lòng nhập bộ phận', 'error'); return }
+        if (!hinh_thuc_sua) { showToast('Vui lòng chọn hình thức sửa', 'error'); return }
         if (!chiPhiVal || !Number.isFinite(chi_phi) || chi_phi < 0) { showToast('Vui lòng nhập chi phí hợp lệ', 'error'); return }
         if (!maintReceiptFile) {
             showToast('Vui lòng chụp ảnh bằng chứng', 'error')
@@ -1268,6 +1279,7 @@
             owner_id: currentOwnerId,
             xe_id: currentXeId,
             ngay, loai, bo_phan,
+            hinh_thuc_sua,
             mo_ta: mo_ta || null,
             chi_phi,
             anh_url: anh_url || null,

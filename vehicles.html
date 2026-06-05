@@ -764,9 +764,14 @@
             const chi_phi = chiPhiRaw === '' ? null : Number(chiPhiRaw)
             const bo_phan = document.getElementById('maint-modal-bophan').value.trim() || null
             const ngay_tiep_theo = document.getElementById('maint-modal-ngaytiep').value || null
+            const hinh_thuc_sua = document.getElementById('maint-modal-hinh-thuc').value
 
             if (!ngay) {
                 showToast('Vui lòng chọn ngày!', 'error')
+                return
+            }
+            if (!hinh_thuc_sua) {
+                showToast('Vui lòng chọn hình thức sửa', 'error')
                 return
             }
             if (chiPhiRaw !== '' && (!Number.isFinite(chi_phi) || chi_phi < 0)) {
@@ -774,7 +779,7 @@
                 return
             }
 
-            const { error } = await sb.from('bao_duong').insert({ owner_id: ownerProfileId, xe_id: xeId, ngay, loai, mo_ta, chi_phi, bo_phan, ngay_tiep_theo })
+            const { error } = await sb.from('bao_duong').insert({ owner_id: ownerProfileId, xe_id: xeId, ngay, loai, mo_ta, chi_phi, bo_phan, ngay_tiep_theo, hinh_thuc_sua })
             if (error) {
                 showToast('Lỗi: ' + error.message, 'error')
                 return
@@ -786,6 +791,7 @@
             chiPhiResetEl.value = ''
             chiPhiResetEl.dataset.rawValue = ''
             document.getElementById('maint-modal-ngaytiep').value = ''
+            document.getElementById('maint-modal-hinh-thuc').value = ''
             loadMaintenanceModal()
             loadVehicles()
         }
@@ -1189,6 +1195,14 @@
                     <option value="linh_kien">Linh kiện</option>
                     <option value="lop_xe">Lốp xe</option>
                     <option value="dinh_ky">Định kỳ</option>
+                </select>
+            </div>
+            <div style="margin-bottom:12px">
+                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Hình thức sửa</label>
+                <select id="maint-modal-hinh-thuc" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:#1a1a2e;background:white;box-sizing:border-box">
+                    <option value="">-- Chọn hình thức --</option>
+                    <option value="tai_gara">Tại gara</option>
+                    <option value="luu_dong">Lưu động (gọi thợ ra xe)</option>
                 </select>
             </div>
             <div style="margin-bottom:12px">
