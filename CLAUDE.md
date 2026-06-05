@@ -232,7 +232,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 #### `sw.js` + `manifest.json` — PWA
 - Chỉ register từ `bai10.html`
 - STATIC_ASSETS: `bai10.html`, `style.css`, `manifest.json`, icons — **`shared.js` và tất cả admin pages không được pre-cache**, chỉ dynamic-cache khi navigate tới
-- Khi deploy thay đổi cho bất kỳ file nào trong STATIC_ASSETS, phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-vXX`) để invalidate cache cũ
+- Khi deploy thay đổi cho bất kỳ file nào trong STATIC_ASSETS, phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v38`) để invalidate cache cũ
 - Push handler + notificationclick handler (focus tab cũ hoặc mở tab mới tới URL trong `notification.data.url`)
 
 ---
