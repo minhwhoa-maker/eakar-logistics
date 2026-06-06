@@ -723,6 +723,14 @@
                     addCell(row, loaiLabels[m.loai] || m.loai || '-')
                     const moTaCell = document.createElement('td')
                     moTaCell.textContent = m.mo_ta || '-'
+                    if (m.hinh_thuc_sua === 'tai_gara' || m.hinh_thuc_sua === 'luu_dong') {
+                        const htBadge = document.createElement('span')
+                        const htVar = m.hinh_thuc_sua === 'tai_gara' ? '--success' : '--warning'
+                        const htBg = m.hinh_thuc_sua === 'tai_gara' ? '#e8f5ed' : '#fdf0e3'
+                        htBadge.textContent = m.hinh_thuc_sua === 'tai_gara' ? '🏭 Tại gara' : '🔧 Lưu động'
+                        htBadge.style.cssText = `margin-left:8px; font-size:0.8em; padding:2px 8px; border-radius:6px; white-space:nowrap; color:var(${htVar}); background:${htBg}`
+                        moTaCell.appendChild(htBadge)
+                    }
                     if (m.trip_id) {
                         const tripLink = document.createElement('a')
                         tripLink.href = 'trip-detail.html?trip_id=' + m.trip_id

@@ -90,6 +90,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - `confirmCreateTrip()`: `co_dinh` → dùng `tien_co_dinh`; `theo_km` → đọc `#preview-km-input`, query lại `bang_luong_km` (không dùng cached value). Sau khi trip insert thành công + `mode === 'co_dinh'` + `luong_chuyen > 0`: fire-and-forget `POST /api/route-salary` để nhớ giá tuyến này cho lần sau (skip nếu `maTuyen` chứa `'XX'`).
 - `closePreviewModal()`: đóng preview → mở lại new-trip-modal → `pendingTripData = null`
 - Cả 2 modals dùng inline styles (không có `.modal`/`.modal-content` CSS class)
+- Modal `#new-trip-modal` có nút ✕ góc phải đóng modal, tái dùng `closeNewTripModal()` có sẵn (không tạo hàm mới); KHÔNG set `pendingTripData=null` trong nút ✕ (nút chỉ tồn tại khi `pendingTripData` đã null sẵn)
 
 **Local helpers**: `addDotFormat`, `numberToVietnamese` (local, KHÔNG có trong `shared.js`)
 
@@ -184,6 +185,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 - `loadMaintenanceModal()`: trước bảng lịch sử phẳng, render `summaryContainer` "📊 Tổng hợp theo bộ phận" — rollup group theo `bo_phan` (null → nhóm "Khác"), mỗi nhóm `{soLan, lanGanNhat, tongChiPhi, cacNgay[]}`, sort `soLan` desc. Date parse thủ công từ `YYYY-MM-DD` (KHÔNG dùng `formatDate` để né bug timezone của `date` column). Badge cảnh báo `⚠️ thay lại sau N ngày` (màu `--warning`) khi nhóm có `soLan >= 2` và khoảng cách giữa 2 lần gần nhất `> 0 && < NGUONG_THAY_LAI` (30 ngày). Badge chỉ hiển thị, KHÔNG chặn/kết luận.
 - Bảng history join: `.select('*, tai_xe:users!tai_xe_id(full_name)')` — "Người nhập": `'driver'` → `👤 {full_name}`, `'owner'` → `🏢 Chủ xe`
 - Cột Mô tả append `→ Xem chuyến` (mở tab mới) nếu `trip_id` có giá trị
+- Cột Mô tả render badge hình thức sửa inline (🏭 Tại gara nền `#e8f5ed` / 🔧 Lưu động nền `#fdf0e3`); `null`/giá trị lạ không render. **Gotcha**: reset pattern 2 form bảo dưỡng bất đối xứng — `driver-page.html` reset on-open (`openMaintenanceModal`), `vehicles.html` reset on-success; chưa đồng bộ (scope creep, để dành)
 - `loadVehicles()` query `bao_duong.ngay_tiep_theo`; badge: `⚠️ N ngày` (0–7 ngày), `🔴 Quá hạn N ngày` (< 0)
 
 **Bảng lương km**
@@ -232,7 +234,7 @@ Không có build step, không có test runner, không có lint. Quy trình:
 #### `sw.js` + `manifest.json` — PWA
 - Chỉ register từ `bai10.html`
 - STATIC_ASSETS: `bai10.html`, `style.css`, `manifest.json`, icons — **`shared.js` và tất cả admin pages không được pre-cache**, chỉ dynamic-cache khi navigate tới
-- Khi deploy thay đổi cho bất kỳ file nào trong STATIC_ASSETS, phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v39`) để invalidate cache cũ
+- Khi deploy thay đổi cho bất kỳ file nào trong STATIC_ASSETS, phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v40`) để invalidate cache cũ
 - Push handler + notificationclick handler (focus tab cũ hoặc mở tab mới tới URL trong `notification.data.url`)
 
 ---
@@ -340,7 +342,7 @@ Khi user case (b) login lần đầu, bai10 thấy email đã có → skip inser
 `currentUser.id` (Auth UUID) chỉ dùng cho session check, không leak vào DB.
 
 ### CSS conventions
-- CSS variables ở `:root` của `style.css`: `--primary #1565c0`, `--danger #e74c3c`, `--success #27ae60`, `--warning #e67e22`, `--bg #f0f2f5`, `--white #ffffff`, `--border #e0e0e0`, `--text #444`, `--text-muted #888`, `--shadow`, `--radius 12px`, `--radius-sm 8px`. **`--card-bg` và `--bg-secondary` KHÔNG tồn tại** — dùng `--white` và `--bg` thay thế.
+- CSS variables ở `:root` của `style.css`: `--primary #1565c0`, `--danger #e74c3c`, `--success #2e9e58`, `--warning #e08e2b`, `--bg #f0f2f5`, `--white #ffffff`, `--border #e8eaed`, `--text #3a3f47`, `--text-muted #8a9099`, `--shadow` (2 lớp: `0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.06)`), `--radius 12px`, `--radius-sm 8px`. **`--card-bg` và `--bg-secondary` KHÔNG tồn tại** — dùng `--white` và `--bg` thay thế.
 - Button classes: `.btn` (xanh primary), `.btn-danger/.btn-success/.btn-warning/.btn-purple/.btn-gray/.btn-logout/.btn-full/.btn-sm`. **Không dùng inline `style="background:..."`** — đã có class.
 - `.form-group input` được style sẵn. `.form-group select` **không** được style — cần inline style: `width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:15px;color:#1a1a2e;background:white`.
 - `#receipt-preview` và `#receipt-preview img` được style bằng **ID selector** trong `style.css` — không áp dụng cho dynamic forms. Khi tạo preview image động phải thêm inline style.
@@ -469,8 +471,9 @@ xe             (id, owner_id, bien_so, loai_xe, nam_sx, trang_thai, tai_xe_id, l
 bao_duong      (id, owner_id, xe_id, ngay, loai, mo_ta, chi_phi, created_at,
                 bo_phan text, ngay_tiep_theo date,
                 anh_url text, lat float, lng float, anh_realtime bool,
-                nguoi_nhap text, tai_xe_id uuid, trip_id uuid)
+                nguoi_nhap text, tai_xe_id uuid, trip_id uuid, hinh_thuc_sua text)
                 -- loai: 'hong_hoc' | 'linh_kien' | 'lop_xe' | 'dinh_ky'
+                -- hinh_thuc_sua: 'tai_gara' | 'luu_dong', bắt buộc chọn khi nhập (validate client); records cũ = null, không backfill; chi phí lưu động cao hơn gộp chung vào chi_phi, không tách cột phí riêng
                 -- bo_phan: nullable, tên bộ phận bảo dưỡng (vd: "Lốp trước trái")
                 -- ngay_tiep_theo: nullable date, dùng để cảnh báo bảo dưỡng tiếp theo trên bảng xe
                 -- anh_url: nullable, public URL ảnh từ storage bucket 'receipts'
@@ -545,6 +548,9 @@ route_salary       (owner_id uuid NOT NULL REFERENCES public.users(id) ON DELETE
 
   -- luong_thang: thêm toggle lương cơ bản (bỏ công thức ngày công)
   ALTER TABLE luong_thang ADD COLUMN IF NOT EXISTS ap_dung_luong_co_ban bool DEFAULT false;
+
+  -- bao_duong: thêm hình thức sửa (tại gara / lưu động)
+  ALTER TABLE bao_duong ADD COLUMN IF NOT EXISTS hinh_thuc_sua text;
   ```
 
 ## Storage
