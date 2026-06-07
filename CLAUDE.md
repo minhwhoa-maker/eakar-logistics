@@ -301,6 +301,8 @@ sessions       (token text PK, user_id uuid NOT NULL REFERENCES public.users(id)
                 created_at timestamptz DEFAULT now())
                 -- session token cho user Zalo (driver_token localStorage); KHÔNG có expiry (chủ ý)
                 -- FK user_id → public.users(id), KHÔNG auth.users; token PK để verify-session .maybeSingle() an toàn
+                chi_phi_chuyen (id, trip_id, loai, mo_ta, so_tien, anh_url, created_at, lat, lng,
+                anh_realtime bool, is_legacy bool DEFAULT false, nguon_tien text, so_lit numeric)
 ```
 
 - `tai_xe_id` luôn = `users.id` (không phải Auth UUID).
