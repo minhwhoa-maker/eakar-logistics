@@ -29,215 +29,14 @@ Không có build step, không có test runner, không có lint. Quy trình:
 
 ## Architecture
 
+> **Quy tắc nạp context**: file này = convention chung + schema + shared/route-pricing/validate-diem + CSS + auth + env table. Chi tiết tách ra 2 file con. CLAUDE.md MỘT MÌNH CHƯA ĐỦ để sửa một trang/endpoint cụ thể:
+> - Task đụng 1 trang HTML → đọc `docs/pages.md` trước.
+> - Task đụng 1 endpoint `api/` → đọc `docs/api.md` trước.
+> - Không đọc file con tương ứng = spec-từ-trí-nhớ (CẤM).
+
 ### Page roles
 
-#### `bai10.html` — landing + auth
-- Landing page + Google OAuth + role redirect + **PWA cold-start router**
-- Có `<style>` block riêng (~220 dòng) cho hero/stats/features layout — KHÔNG dùng `.card` chuẩn
-- `checkUserRole`: email không tìm thấy trong `users` → hiện inline error card (ẩn login UI, card đỏ + nút "Thử lại bằng tài khoản khác" gọi `signOut()` + redirect); **không INSERT**
-- `loadStats()`: query `trips`/`users` công khai cho landing stats (sẽ break nếu bật RLS)
-- Local `formatStatNumber` ≠ `shared.formatMoney`: bai10 hiện dạng rút gọn `1.2B`/`345M`/`12K`
-- OAuth `redirectTo`: `window.location.origin + '/bai10.html'`
-- `bai10.html` có nút "Đăng nhập bằng số Zalo" → redirect `login-sdt.html`; `login-sdt.html` có link "Đăng nhập bằng phương thức khác" → redirect `bai10.html`
-- Static assets: `logo/logo.PNG` (header logo, max-width 220px), `logo/zalo.png` (icon nút Zalo, 20×20px). Case-sensitive trên Linux/Vercel — `logo.PNG` phải viết hoa đuôi
-- **`checkUser()` — cold-start router 2-auth**: `manifest.json` `start_url: ./bai10.html` → PWA luôn về bai10. Khi `getSession()` trả null, hàm kiểm tra `localStorage.driver_token` trước khi `showLogin()`: có token → `POST /api/verify-session`; `200` → `window.location.replace()` theo role; `4xx` → xóa token + `showLogin()`; `5xx`/network throw → **giữ token** + `showLogin()` (tránh xóa token khi chỉ rớt mạng). `onAuthStateChange` chỉ bind khi không có token hoặc token chết 4xx. KHÔNG dùng `requireRole()` ở đây — nó redirect ngược về bai10 khi fail → vòng lặp vô hạn.
-
-#### `login-sdt.html` — driver Zalo ZNS OTP login
-- Standalone page, **KHÔNG dùng `shared.js`** — chỉ `style.css` (`.btn`/`.btn-full`/`.form-group`/`.toast`) + local `showToast`
-- 2 step toggle bằng class `.step-container.active`: step1 nhập SĐT → `POST /api/send-otp`; step2 nhập mã 6 số → `POST /api/verify-otp`
-- SĐT sanitize client bằng `.replace(/\D/g, '').trim()` (chỉ giữ số, validate độ dài 9–11). State `currentSdt` được giữ ở module level giữa 2 bước.
-- Verify OK → `localStorage.setItem('driver_token', token)` → redirect theo `result.role`: `supervisor`/`owner` → `owner-dashboard.html`; còn lại (driver) → `driver-page.html`. localStorage key luôn là `'driver_token'` dù supervisor cũng dùng — KHÔNG đổi tên.
-- `driver-page.html` `logout()` cũng `localStorage.removeItem('driver_token')` + redirect về `login-sdt.html`
-- **Hỗ trợ cả driver lẫn supervisor**: `api/send-otp.js` cho phép `role='driver'` hoặc `'supervisor'`; `api/verify-otp.js` trả thêm `role` trong response.
-- **Wired into auth**: `requireRole` trong `shared.js` tự xử cả OAuth lẫn Zalo token cho mọi trang dùng nó (`luong-cua-toi.html`, `trip-detail.html`, các trang owner khi supervisor đăng nhập Zalo).
-
-#### `owner-dashboard.html` — owner xem báo cáo + tạo chuyến
-- Module-level vars: `currentOwnerProfileId`, `tripsChannel`, `xeList`, `driverList`, `pendingTripData`
-
-**Trip table**
-- 7 cột: Ngày | Tuyến đường | Trạng thái | Doanh thu | Chi phí | Lợi nhuận | Chi tiết
-- Cột "Trạng thái" (cột 3) tạo thủ công trong `renderTrips()` bằng `row.insertBefore(statusCell, row.children[2])` — badge `🚛 Đang chạy` (`--primary`) / `✅ Hoàn thành` (`--success`); không nằm trong values array
-- Mobile ≤600px: ẩn cột 5 (Chi phí) + cột 7 (Lương) qua `nth-child` trong `<style>` block ở `<head>`
-- Row highlight: click + touchend → xóa highlight cũ trên `#report-body tr`, set `background:#e3f2fd` cho row vừa tap
-- Header có nav đến driver/vehicles; có floating AI chatbot (FAB góc phải) gọi `/api/chat`; `driverMap` trong chatbot context filter `.eq('owner_id', currentOwnerProfileId)`
-
-**Notify panel** (chung cho 4 trang owner)
-- `#btn-notify` → `#notify-panel` (fixed top:64px right:16px, click-outside để đóng), 4 toggle (notify_new_trip / notify_complete / notify_expense / notify_maintenance), load/save qua `notify_settings`
-- `setupPushNotifications(userId)` chạy mỗi lần login
-- JS dependencies (`VAPID_PUBLIC_KEY`, `urlBase64ToUint8Array`, `setupPushNotifications`, `loadNotifySettings`, `saveNotifySetting`, `toggleNotifyPanel`) định nghĩa **local trong mỗi file** (không phải `shared.js`); dùng `currentUserId` (là `auth.profile.id` — luôn là ID của user đang đăng nhập, **không phải** `effectiveOwnerId`) để tránh ghi đè notification settings của admin khi supervisor dùng
-- Khi copy notify panel + push setup sang page mới, lấy từ `owner-dashboard.html` (canonical) — không từ pages khác (có thể đã drift theo thời gian)
-
-**Tạo chuyến** (`#new-trip-modal`)
-- 2 mode qua tab buttons (`tab-co-dinh`/`tab-theo-km`) + hidden `#nt-loai-luong`; `setTripTab(mode)` toggle UI
-- `#nt-tuyen-duong` luôn hiện (tên tuyến cho `co_dinh`; bị bỏ qua ở `theo_km`)
-- `#nt-co-dinh-block` (ẩn khi `theo_km`) chứa label "Lương trả theo chuyến cố định (đ)" + `#nt-tien-chuyen` dùng `addDotFormat`; nằm ngay sau div Tuyến đường và trước div flex Xe+Tài xế trong modal DOM
-- Mode `theo_km`: gọi `POST /api/maps`, lookup `bang_luong_km` → `luong_chuyen`. Query: `.eq('loai_xe', xe.loai_xe).lte('km_tu', km).or('km_den.gte.'+km+',km_den.is.null').limit(1)` — dùng `.limit(1)` (KHÔNG `.maybeSingle()`), access `rateRows[0]`
-- Mode `co_dinh`: `luong_chuyen = tien_co_dinh`, skip Maps API
-- **Paste hội thoại** (`#nt-conv-box`): owner paste đoạn chat Zalo vào `#nt-conv-text` → bấm "✨ Tách thành các điểm" → `handleConvPaste()` gọi `POST /api/parse-hoi-thoai` → nhận `{ diems:[{loai, ten, sdt, dia_chi, ghi_chu}] }` → clear list cũ → gọi `addDiemBoc()`/`addDiemGiao()` cho mỗi phần tử → `fillLastRow(containerId, d)` điền field vào row vừa tạo → `checkBocDauDu()` + `autoFillTuyen()`. `fillLastRow` nhận `{ten, sdt, dia_chi, ghi_chu}` (tên field từ LLM, KHÔNG phải `ten_lien_he`/`sdt_lien_he`).
-- **`autoFillTuyen()`** (async): sau khi địa chỉ bốc/giao thay đổi → gọi `deriveTuyen()` từ `route-pricing.js` → nếu nhận ra cả 2 tỉnh: điền `#nt-tuyen-duong` (nếu chưa edit tay) + fetch `GET /api/route-salary?maTuyen=...` (Supabase JWT header) → điền `#nt-tien-chuyen` (nếu chưa edit tay, chỉ `co_dinh` mode). **Cờ `_manuallyEdited`**: mỗi ô tuyến + lương có cờ DOM riêng; set `true` khi user gõ tay, reset `false` khi mở modal mới (`openNewTripModal`). Chống đè sau await: double-check `_manuallyEdited` lần 2 sau khi fetch resolve.
-- `buildDiemRow(containerId)`: card-style layout (`flex-direction:column`, viền trái màu cam cho bốc / xanh cho giao). Các input: `.diem-ten` (tên liên hệ, bắt buộc), `.diem-sdt` (SĐT, `type=tel`, `inputMode=numeric`, `maxLength=10`, chỉ nhận số, bắt buộc), `.diem-dia-chi` (địa chỉ, text tự do — không phải URL) + hidden lat/lng + nút GPS, `.diem-ghichu` (ghi chú, tuỳ chọn), nút xóa ✕ align-right. `parseMapsUrl()` detect Google Maps URL (pattern `/@lat,lng` hoặc `?query=lat,lng`) → gọi `setCoord(lat, lng)` + clear `addrInput.value`; gõ text thường → chỉ reset `addrInput.style.color` (KHÔNG clear lat/lng). `setCoord(lat, lng)`: ghi latInput/lngInput, render badge "📍 Đã ghim toạ độ ✕" vào `coordSpan` — nút ✕ mới là cách duy nhất xóa tọa độ đã pin. GPS button cũng gọi `setCoord()`. Input listener của `addrInput` gọi `autoFillTuyen()` sau mỗi thay đổi.
-- `collectDiems(containerId)`: trả `[{dia_chi, lat, lng, ten_lien_he, sdt_lien_he, ghi_chu}]`
-- `checkBocDauDu()`: progressive disclosure — ẩn `#nt-giao-block` cho đến khi row bốc đầu tiên có đủ `ten_lien_he` + `sdt_lien_he` + `dia_chi`. Được gọi từ input listeners của 3 field trên và từ `delBtn` của bốc row (chỉ khi `row.remove()` thật sự xảy ra — bên trong guard `container.children.length > 1`). Dùng `display=''` khi hiện (revert về UA default, ổn với flex container).
-- `#diem-cols-wrapper`: div bọc block bốc + `#nt-giao-block`, `display:flex;flex-direction:column;gap:16px`, mỗi block `flex:1;min-width:0`. `<head>` còn `@media (max-width:600px) { #diem-cols-wrapper { flex-direction:column } }` nhưng đây là **dead code** (desktop đã là column) — có thể xóa an toàn.
-- Waypoints cho Maps API: chỉ giao points (không trộn bốc), `giaoWaypoints = giao.slice(0,-1)`; reorder: `[...optimized_order.map(i => giaoWaypoints[i]), giaoDiems[last]]`
-- INSERT `trips` (trang_thai=`'dang_chay'`, trang_thai_giao=`'cho_nhan'`) + bulk INSERT `diem_hanh_trinh` (loại: `'boc_hang'`/`'giao_hang'`) + notify driver
-
-**Preview flow**
-- Nút "Tạo chuyến" trong `#new-trip-modal` gọi `previewTrip()` — KHÔNG gọi `submitNewTrip()`
-- `previewTrip()`: validate (địa chỉ + `ten_lien_he` + `sdt_lien_he` bắt buộc cho mọi điểm) → build `pendingTripData = { xeId, driverId, xe, driver, diem_boc, diem_giao, optimized_order:[], mode, tien_co_dinh }` → đóng new-trip-modal → mở `#preview-trip-modal` → fire-and-forget `fetchKmPreview()` (chỉ khi `theo_km`)
-- `fetchKmPreview()`: gọi `/api/maps` async; sau khi resolve guard `if (!pendingTripData) return` (race: user click "← Sửa lại" khi đang chờ); update `#preview-km` + `#preview-km-input`
-- `updateLuongPreview()`: đọc `#preview-km-input` → query `bang_luong_km` → hiện `#preview-luong`; gọi từ `fetchKmPreview()` và từ `oninput` trên `#preview-km-input`
-- `confirmCreateTrip()`: `co_dinh` → dùng `tien_co_dinh`; `theo_km` → đọc `#preview-km-input`, query lại `bang_luong_km` (không dùng cached value). Sau khi trip insert thành công + `mode === 'co_dinh'` + `luong_chuyen > 0`: fire-and-forget `POST /api/route-salary` để nhớ giá tuyến này cho lần sau (skip nếu `maTuyen` chứa `'XX'`).
-- `closePreviewModal()`: đóng preview → mở lại new-trip-modal → `pendingTripData = null`
-- Cả 2 modals dùng inline styles (không có `.modal`/`.modal-content` CSS class)
-- Modal `#new-trip-modal` có nút ✕ góc phải đóng modal, tái dùng `closeNewTripModal()` có sẵn (không tạo hàm mới); KHÔNG set `pendingTripData=null` trong nút ✕ (nút chỉ tồn tại khi `pendingTripData` đã null sẵn)
-
-**Local helpers**: `addDotFormat`, `numberToVietnamese` (local, KHÔNG có trong `shared.js`)
-
-**Dead code**: `submitNewTrip()` vẫn còn trong file nhưng không bao giờ được gọi (đã thay bằng preview flow) — có thể xóa an toàn
-
----
-
-#### `trip-detail.html` — xem chi tiết chuyến (shared owner + driver)
-- URL param: `?trip_id=`. Module-level `currentProfile` set trong `initPage()`
-- Auth: dùng `requireRole(sb, ['owner', 'driver', 'supervisor'])` — hỗ trợ cả OAuth lẫn Zalo token. `ownerId` lấy thẳng từ `auth.profile.owner_id` (không query DB thêm); owner dùng `profile.id`.
-- Driver chỉ xem trip của mình; owner + supervisor xem tất cả trong fleet. `ownerId` cho driver/supervisor: `currentProfile.owner_id` (sẵn trong profile từ `requireRole`).
-- Trips query: `.select('*, tai_xe:users!tai_xe_id(full_name), xe:xe(bien_so)')`
-- `goBack()`: ưu tiên `document.referrer`, fallback theo `currentProfile.role`; supervisor không có branch riêng → rơi vào `bai10.html` (known gap)
-- Driver + dang_chay: thêm/sửa/xóa chi phí inline; ảnh bắt buộc + camera-only + GPS bắt buộc
-- Ảnh hóa đơn: `openImageModal(url)` fullscreen overlay (KHÔNG mở tab mới)
-- Badge `⚠️ Cũ` cho entries `is_legacy=true`; `📷⚠️` tooltip nếu `anh_realtime === false`
-- Cột số tiền prefix: `👤` (driver_paid) / `🏢` (owner_paid) / trống (legacy)
-- Add/edit form: select `nguon_tien` bắt buộc (placeholder → validation fail)
-- EXPENSE_TYPES: `{ xang, bai_xe, khac }` — `sua_xe` đã bỏ
-- Local helpers: `numberToVietnamese`, `addMoneyHint` (copy từ driver-page.html)
-
----
-
-#### `driver-page.html` — driver xem + thực hiện chuyến
-- Driver **không tự tạo chuyến**; owner tạo và assign
-- Module-level vars: `currentProfileId`, `currentDriverName`, `currentOwnerId` (từ `users.owner_id`), `currentBienSo`, `currentXeId`, `confirmDiemData`, `confirmDiemPhoto`
-
-**Tabs + queries**
-- Tab "Đang chạy": `.eq('trang_thai', 'dang_chay').in('trang_thai_giao', ['cho_nhan', 'dang_thuc_hien'])`
-- Tab "Hoàn thành": link đến `trip-detail.html?trip_id=`
-- `initPage()` kiểm tra xe assigned: nếu không có xe → red warning card + ẩn `#btn-bao-duong`; nếu có → hiện `#btn-bao-duong`
-
-**Trip card (async)**
-- `buildTripCard(trip)` là **async** — query `xe` lấy `xeConfig`, build `diemSection` div (`diem-section-{tripId}`), gọi `buildDiemHanhTrinhSection(tripId).then(...)`, rồi `buildCompleteForm(trip, xeConfig)` synchronously
-- `loadActiveTrips()` dùng `for...of` + `await` (không dùng `forEach`) vì `buildTripCard` là async
-- `buildCompleteForm(trip, xeConfig)`: hiện `trip.luong_chuyen` cố định từ DB (không tính lại); `btnConfirm.onclick` → `submitComplete(trip.id, trip.luong_chuyen)`
-- `submitComplete(tripId, luongChuyen)`: dùng `luongChuyen` trực tiếp (không gọi `calcLuongChuyen`)
-
-**Diem hanh trinh**
-- `buildDiemHanhTrinhSection(tripId)` async — query `diem_hanh_trinh` order `thu_tu`, render badge loại (`'boc_hang'`→📦 / `'giao_hang'`→🚩), địa chỉ (GPS link nếu có lat/lng), contact row (tên + link `tel:` SĐT + ghi chú italic) chỉ render khi field có giá trị (null guard cho records cũ), trạng thái (✅ thumbnail / nút "✓ Xác nhận tại điểm")
-- Modal `#confirm-diem-modal`: camera-only + GPS bắt buộc
-- `submitConfirmDiem()`: validate photo → GPS → upload (bucket `receipts`) → UPDATE `diem_hanh_trinh` (trang_thai=`'hoan_thanh'`, anh_realtime=true) → nếu 0 pending thì UPDATE `trips.trang_thai_giao='dang_thuc_hien'` → re-render diem section in-place
-
-**Chi phí + bảo dưỡng**
-- EXPENSE_TYPES: `{ xang, bai_xe, khac }` — `sua_xe` đã bỏ (dùng `bao_duong`)
-- Thêm chi phí: camera-only, `anh_realtime=true`, `is_legacy=false`. Sửa: đổi ảnh → camera-only `anh_realtime=true`; xóa ảnh → `anh_realtime=null`; giữ nguyên → giữ giá trị cũ
-- `#btn-bao-duong` → `openMaintenanceModal()` → INSERT `bao_duong` + GPS bắt buộc + `notifyOwner('maintenance', ...)`
-- Modal bảo dưỡng có nút "✨ Tự điền loại & bộ phận" (`#btn-maint-ai`) → `autoFillMaintLoai()`: đọc `#maint-mota`, `POST /api/phan-loai-bao-duong` → set `#maint-loai` (nếu loai ∈ enum) + `#maint-bophan` (nếu non-rỗng). Disable nút + đổi text "Đang xử lý..." trong try/finally; lỗi/`!r.ok`/network → toast nhẹ "Không gợi ý được, chọn tay nhé", KHÔNG chặn. Tài xế review tay, không validate thêm client.
-
-**Local helpers**: `numberToVietnamese(n)` (capitalize first letter), `addMoneyHint(input)` (dấu chấm nghìn, raw digits trong `input.dataset.rawValue`). Submit functions đọc `dataset.rawValue || .value`
-
-**Dead code**: `#btn-new-trip` và form tạo chuyến tồn tại trong HTML nhưng `initPage()` không bao giờ show — có thể xóa an toàn
-
-**`setupLogoutListener(sb)` đã bị comment out** trong `driver-page.html` (intentional). Driver/supervisor Zalo không có Supabase session → `onAuthStateChange` bắn `SIGNED_OUT` khi cold-start → văng khỏi app. Nếu muốn bật lại, cần đảm bảo `setupLogoutListener` không văng Zalo user.
-
----
-
-#### `driver.html` — owner quản lý tài xế + công nợ
-- Bảng 5 cột: Họ và tên | SĐT | Xe đang chạy | Đang giữ | Thao tác — không có month filter, không có PDF
-- `loadDrivers()`: build `xeMap[tai_xe_id → bien_so]` từ xe có non-null `tai_xe_id`, dùng `calcDriverBalance()`
-- **Balance** = Σ`tam_ung`(hoàn thành) + Σ`tam_ung_thang` − Σ`hoan_ung`(hoàn thành) − Σ`chi_phi_driver_paid`(ALL trips, non-legacy); đỏ nếu > 0, xanh nếu ≤ 0
-
-**Modals**
-- Click tên tài xế → `openTripsModal(driverId, driverName, driverEmail, driverSdt, driverBienSo)` — modal 5 tham số, info section + month filter nội bộ + nút xóa tài xế (async: `await deleteDriver()`, chỉ close modal khi return `true`)
-- Click "Đang giữ" → `openBalanceModal(driverId, driverName)`: debt ledger timeline
-  - Entries `{ date, type, label, amount, sign }`: `trip_advance` (+1), `refund` (-1), `advance` (+1), `expense_driver` (-1)
-  - Date parse: local methods `getDate/getMonth/getFullYear` — KHÔNG dùng UTC methods
-  - Bảng 5 cột: Ngày | Loại | Mô tả | Số tiền | Số dư; badge `expense_driver`: `background:#ffebee;color:#c62828`
-  - Dòng tổng "Tổng đang giữ" với border-top dày
-- `+ Tạm ứng` → `openAdvanceModal()` → INSERT `tam_ung_thang`
-- `addDriver()`: check trùng email + SĐT qua `maybeSingle()` trước INSERT, include `owner_id: ownerProfileId`
-
----
-
-#### `vehicles.html` — owner quản lý xe + bảo dưỡng
-- Click biển số → modal đổi tài xế (kiểm tra tài xế đang lái xe khác); dùng `formatBienSo(s)` khi hiển thị và blur
-- `changeStatus(id, status, taiXeId)`: có tài xế → `hoat_dong ↔ bao_duong`; không tài xế → `tam_nghi ↔ bao_duong`
-- "📋 Chuyến" → modal query bằng `xe_id` (KHÔNG phải `tai_xe_id`) — lấy đúng chuyến của xe qua mọi tài xế
-- `nam_sx` và `luong_co_ban` tồn tại trong DB nhưng ẩn khỏi UI; `tai_xe_id` unique enforce ở app, không có DB constraint
-- Bảng 7 cột: Biển số | Loại | Cách tính lương | Giá trị | Tài xế | Trạng thái | Hành động
-
-**Inline salary editing**
-- 2 cột: "Cách tính lương" (select `khoan_chuyen`/`phan_tram_doanh_thu`) + "Giá trị" (input, suffix `đ`/`%` theo mode)
-- Onchange select → auto-save + reset `gia_tri_luong=0` vào DB. Blur input → validate pct 0–100 + save
-- Switch mode: phải set `input.dataset.rawValue = ''` explicitly (programmatic change không trigger input event)
-- Form "Thêm xe mới" cũng có 2 field tương ứng; onchange dropdown trong form phải clear value+rawValue+suffix
-
-**Bảo dưỡng**
-- `PRESET_PARTS`: array 21 bộ phận hardcode (file-level const)
-- Form có `maint-bophan-{id}` (text input với datalist `bophan-suggestions-{id}`) + `maint-ngaytiep-{id}` (date)
-- `loadMaintenance()`: populate datalist từ lịch sử + PRESET_PARTS (unique merge); filter `<select>` theo `bo_phan`
-- `loadMaintenanceModal()`: trước bảng lịch sử phẳng, render `summaryContainer` "📊 Tổng hợp theo bộ phận" — rollup group theo `bo_phan` (null → nhóm "Khác"), mỗi nhóm `{soLan, lanGanNhat, tongChiPhi, cacNgay[]}`, sort `soLan` desc. Date parse thủ công từ `YYYY-MM-DD` (KHÔNG dùng `formatDate` để né bug timezone của `date` column). Badge cảnh báo `⚠️ thay lại sau N ngày` (màu `--warning`) khi nhóm có `soLan >= 2` và khoảng cách giữa 2 lần gần nhất `> 0 && < NGUONG_THAY_LAI` (30 ngày). Badge chỉ hiển thị, KHÔNG chặn/kết luận.
-- Bảng history join: `.select('*, tai_xe:users!tai_xe_id(full_name)')` — "Người nhập": `'driver'` → `👤 {full_name}`, `'owner'` → `🏢 Chủ xe`
-- Cột Mô tả append `→ Xem chuyến` (mở tab mới) nếu `trip_id` có giá trị
-- Cột Mô tả render badge hình thức sửa inline (🏭 Tại gara nền `#e8f5ed` / 🔧 Lưu động nền `#fdf0e3`); `null`/giá trị lạ không render. **Gotcha**: reset pattern 2 form bảo dưỡng bất đối xứng — `driver-page.html` reset on-open (`openMaintenanceModal`), `vehicles.html` reset on-success; chưa đồng bộ (scope creep, để dành)
-- `loadVehicles()` query `bao_duong.ngay_tiep_theo`; badge: `⚠️ N ngày` (0–7 ngày), `🔴 Quá hạn N ngày` (< 0)
-
-**Bảng lương km**
-- Card riêng cho owner define `bang_luong_km` theo `loai_xe` + km range
-- `init()` calls `await loadKmRates()` + `addDotFormat(#km-so-tien)`
-
----
-
-#### `luong-thang.html` — owner quản lý bảng lương tháng + PDF
-- Toggle `cho_phep_xem_luong` trên `users` (owner row) cho phép driver xem lương
-- `fetchLuongData(thangStr)` chỉ **fetch raw**: drivers, xe (`.select('id, bien_so')`), upsert `luong_thang` (auto-INSERT nếu chưa có, `luong_co_ban_snapshot: 0`, `ap_dung_luong_co_ban: false`), query trips theo tháng. **Per-driver aggregation (Σ luong_chuyen, Σ tam_ung, Σ hoan_ung, soChuyen, thuc_linh) compute trong `loadLuong()` forEach** — không nằm trong fetchLuongData. PDF render (`printPayslip`/`printAllPayslips`) cũng gọi `fetchLuongData` rồi loop tính lại trước khi build payslip.
-- Bảng 12 cột: Tên | Biển số | Lương CB | Chuyến | Phụ cấp | Thưởng | Tạm ứng | Hoàn ứng | Khấu trừ | THỰC LĨNH | Sửa | In phiếu
-- Cột Chuyến hiển thị `${soChuyen} chuyến / ${formatMoney(tong_luong_chuyen)}` (đếm + tổng tiền cùng cell); PDF payslip giữ label `Lương chuyến (${trips.length} chuyến)` riêng
-- Lương CB: hiện `formatMoney(luong_co_ban_snapshot)` khi `ap_dung_luong_co_ban=true`, còn lại hiện `'—'`
-- Công thức: `luong_cb_apply = ap_dung_luong_co_ban ? luong_co_ban_snapshot : 0`; `thuc_linh = luong_cb_apply + tong_luong_chuyen + phu_cap + thuong - tong_tam_ung + tong_hoan_ung - khau_tru`
-- THỰC LĨNH highlight: `idx === 9` trong cellValues (0-indexed)
-- PDF: `buildPayslipHTML(luongRow, driver, xe, trips, thangStr)` → DOM element (width 595px, inline style); `printPayslip()` dùng `html2canvas` (scale 2) + `jspdf.jsPDF`; `printAllPayslips()` tạo 1 PDF nhiều trang; dòng "Lương cơ bản" chỉ xuất hiện trong PDF khi `ap_dung_luong_co_ban=true`
-- Nút "🖨️ In tất cả" ở filter bar + hamburger menu (`menu-print-all`); header không còn nút này
-- CDN: `jspdf@2.5.1` (UMD) → global `jspdf.jsPDF`; `html2canvas@1.4.1` → global `html2canvas`
-- Local helper `slugify()`: `.replace(/đ/g,'d').replace(/Đ/g,'d').normalize('NFD').replace(/[̀-ͯ]/g,'')...`
-- Edit modal cập nhật `ap_dung_luong_co_ban` (`.notify-row` toggle `#edit-ap-dung-cb`), `luong_co_ban_snapshot` (`#edit-luong-cb`), `phu_cap`, `thuong`, `khau_tru`, `ghi_chu`. `ownerProfileId` = `auth.profile.id`
-- `#edit-luong-cb` nằm trong `#edit-luong-cb-group`: ẩn khi toggle OFF, hiện khi ON — `toggleLuongCbVisibility()` được gọi cả khi `onchange` và khi `openEditModal()` sau khi set `.checked`
-
----
-
-#### `luong-cua-toi.html` — driver xem lương của mình
-- Permission gate: query `users.owner_id` của driver → query `users.cho_phep_xem_luong` của owner; nếu false/null → hiện card đỏ "chưa bật"
-- `initPage()` tạo 2 child div `#balance-container` + `#luong-container` bên trong `#main-content`; gọi `loadBalanceCard()` (không await) + `loadLuong()` (await)
-- **Balance card** (`#balance-container`): hiện số dư bằng `calcDriverBalance()` — màu warning nếu > 0 (đang giữ), success nếu < 0 (chủ nợ)
-- `#luong-container`: danh sách tháng dạng card, thực lĩnh lớn, nút Chi tiết → modal breakdown
-- `currentProfileId` = `auth.profile.id`
-
----
-
-#### `supervisors.html` — owner quản lý giám sát viên (Phase A)
-- Auth: `requireRole(sb, 'owner')` — CHỈ owner gốc, supervisor không vào được
-- Chức năng: danh sách supervisor (query `users` `.eq('role','supervisor').eq('owner_id', ownerProfileId)`), thêm (INSERT với `role:'supervisor'`), xóa có confirm
-- Form thêm supervisor có 3 field: email (bắt buộc), SĐT (tùy chọn, dùng cho Zalo OTP), họ và tên (bắt buộc). `addSupervisor()` check trùng email + trùng SĐT (nếu có) trước khi INSERT; SĐT insert là `null` nếu để trống (KHÔNG empty string — UNIQUE constraint).
-- **Supervisor hỗ trợ 2 phương thức đăng nhập**: Google OAuth → `bai10.html` redirect sang `owner-dashboard.html`; Zalo OTP → `login-sdt.html` (cần có `sdt` trong `users`, `api/send-otp.js` cho phép `role IN ('driver','supervisor')`, supervisor login Zalo có `driver_token` trong localStorage giống driver) → redirect `owner-dashboard.html`.
-- **Phase A — read-only mềm**: supervisor thấy đúng fleet của admin (4 trang: owner-dashboard, driver, vehicles, luong-thang) nhưng mọi nút tạo/sửa/xóa bị ẩn bằng **CSS role-gating pattern** (`.owner-only` ẩn mặc định trong `style.css`; JS thêm `body.role-owner` cho owner để gỡ ẩn) — xem chi tiết trong section CSS conventions. Tránh FOUC vì element ẩn ngay khi parse, không chờ JS hide-after-render. `vehicles.html` còn vài dynamic cell (`loadVehicles()` row builder) vẫn dùng conditional `currentRole === 'supervisor'` branches cho plate/salary/action cells — chủ ý không migrate sang `.owner-only` (post-auth render nên không có FOUC, rewrite risky vì intertwined với inline-salary-edit). RLS chưa bật → đây là phòng thủ UI thuần, chưa phải server-side. Phase B (RLS) là milestone riêng.
-- Pattern effectiveOwnerId: `supervisor ? profile.owner_id : profile.id` — gán vào biến owner-id của trang để mọi query `.eq('owner_id', ...)` tự đúng fleet admin
-- `currentUserId = auth.profile.id` (ID của người đang đăng nhập) dùng riêng cho `setupPushNotifications` và `loadNotifySettings`/`saveNotifySetting` — không dùng `effectiveOwnerId` để tránh đụng notification settings của admin
-
----
-
-#### `sw.js` + `manifest.json` — PWA
-- Chỉ register từ `bai10.html`
-- STATIC_ASSETS: `bai10.html`, `style.css`, `manifest.json`, icons — **`shared.js` và tất cả admin pages không được pre-cache**, chỉ dynamic-cache khi navigate tới
-- Khi deploy thay đổi cho bất kỳ file nào trong STATIC_ASSETS, phải bump `CACHE_NAME` trong `sw.js` (hiện tại `van-tai-v40`) để invalidate cache cũ
-- Push handler + notificationclick handler (focus tab cũ hoặc mở tab mới tới URL trong `notification.data.url`)
-
----
+> **Chi tiết hành vi từng trang đã tách ra `docs/pages.md`** (bai10, login-sdt, owner-dashboard, trip-detail, driver-page, driver, vehicles, luong-thang, luong-cua-toi, supervisors, sw.js/manifest). Đọc file đó khi cần sửa một trang cụ thể.
 
 ### route-pricing.js (browser-compatible, load qua `<script src="route-pricing.js">`)
 
@@ -377,30 +176,9 @@ function showToast(msg, type = '') {
 
 ### api/ — Vercel serverless functions
 
-Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"type": "module"`.
+> **Chi tiết từng endpoint (request/response shape, flow, schema liên quan) đã tách ra `docs/api.md`**: `chat`, `maps`, `subscribe`, `notify`, `send-otp`, `verify-otp`, `verify-session`, `route-salary`, `parse-diem`, `parse-hoi-thoai`, `phan-loai-bao-duong`. Đọc file đó khi cần sửa một endpoint cụ thể.
 
-- **`api/chat.js`** — pure proxy SSE tới Anthropic API; model, system prompt và messages đều đến từ `req.body` (do `owner-dashboard.html` gửi), không có gì hardcode server-side. Env: `ANTHROPIC_API_KEY`.
-- **`api/maps.js`** — POST `{ origin, destination, waypoints? }` proxy tới VietMap APIs. `origin`/`destination`/waypoints đều là `{ dia_chi?, lat?, lng? }` — nếu đã có lat+lng thì dùng luôn (skip geocode), fallback geocode qua VietMap Search v3. Geocode origin trước (không có focus), rồi geocode tất cả điểm còn lại song song với origin làm focus. 0 waypoints → VietMap Route v1.1 (2 điểm); có waypoints → VietMap TSP v3 (`roundtrip=false&sources=first&destinations=last`). Trả `{ km, optimized_order }` hoặc `{ error }`. km làm tròn 1 chữ số thập phân (intentional cho `bang_luong_km` lookup). `optimized_order` luôn là original order (VietMap TSP không trả index array — đang điều tra, hiện có `[TSP_DEBUG]` log dump full response + input points vào Vercel logs để xác minh). Env: `VIETMAP_API_KEY`.
-- **`api/subscribe.js`** — POST `{ user_id, subscription }`, upsert vào `push_subscriptions`. Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
-- **`api/notify.js`** — POST `{ owner_id, type, payload }`. Check `notify_settings` bằng `.maybeSingle()` (NULL row = tất cả bật), gửi push qua `web-push`, tự xóa subscription nếu 410. Push payload JSON bao gồm `title`, `body`, `icon`, và `url` (dùng trong `sw.js` notificationclick). URL logic: nếu `payload.trip_id` có giá trị → `/trip-detail.html?trip_id={trip_id}`; ngược lại nếu `type === 'maintenance'` → `/vehicles.html`; còn lại → `/owner-dashboard.html`. `type` và payload fields bắt buộc:
-  - `'new_trip'`: `{ driver_name, bien_so, tuyen_duong, trip_id }`
-  - `'complete'`: `{ driver_name, bien_so, tuyen_duong, trip_id }`
-  - `'expense'`: `{ driver_name, bien_so, loai, so_tien, trip_id }`
-  - `'maintenance'`: `{ driver_name, bien_so, bo_phan, chi_phi, trip_id }`
-  
-  Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`.
-- **`api/send-otp.js`** — POST `{ sdt }` (SĐT `0901234567`, normalize chỉ `.trim()`). Gửi OTP 6 số cho driver login qua Zalo ZNS template `586307`. Đã có frontend wiring (`login-sdt.html`), verify (`verify-otp.js`), và session check (`verify-session.js`). Flow: validate sdt → check `users` (phải tồn tại + `role='driver'`, nếu không trả 404/403) → rate-limit lớp 1 (60s giữa 2 lần xin mã) → rate-limit lớp 2 (≤5 mã/24h) → set `used=true` mọi mã cũ → tạo mã bằng `crypto.randomInt(100000, 1000000)` (crypto-secure, luôn 6 số) → INSERT `otp_codes` → gọi `sendZaloZns()` (hàm `sendZaloZns()` gọi `sendZnsWithToken(phone, code, token)` — POST `business.openapi.zalo.me/message/template`, header `access_token`, body `{phone, template_id:'586307', template_data:{otp}}`; nếu Zalo trả `error === -216` (token hết hạn) → `refreshZaloToken()` (POST `oauth.zaloapp.com/v4/oa/access_token`, header `secret_key`, body form-urlencoded `grant_type=refresh_token&app_id&refresh_token`) → retry 1 lần). **TUYỆT ĐỐI không trả `code` về client** (chỉ `{ ok: true }`). Tradeoff đã biết: 404/403/200 khác nhau → cho phép phone enumeration (chấp nhận để UX báo lỗi rõ). Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `ZALO_ACCESS_TOKEN`, `ZALO_REFRESH_TOKEN`, `ZALO_APP_ID`, `ZALO_APP_SECRET`.
-  - **Auto-refresh caveat**: dùng `process.env` runtime (không persist) → mỗi cold start dùng token cũ, chỉ refresh khi bị reject. Refresh_token Zalo đổi mỗi lần dùng nhưng code không lưu lại refresh_token mới — known limitation, refresh chỉ chạy được trong phạm vi 1 request.
-  - **Dev mode**: khi `ZALO_ACCESS_TOKEN` chưa set → log `[DEV] OTP: <code>` ra Vercel logs, không gửi ZNS thật.
-  - **Đã tạo trên Supabase. Schema:** `(id uuid PK, sdt text, code text, expires_at timestamptz, used bool DEFAULT false, wrong_attempts int DEFAULT 0, created_at timestamptz DEFAULT now())`. Cột `created_at DEFAULT now()` bắt buộc — cả 2 rate-limit dựa vào nó và code không insert thủ công.
-- **`api/verify-otp.js`** — POST `{ sdt, code }`. Verify OTP → tạo session token cho driver login. Flow: validate (`sdt` phải `typeof === 'string'`; `code = String(rawCode ?? '').trim()` rồi match `/^\d{6}$/`) → query `otp_codes` mã chưa dùng mới nhất (`.eq('used', false).order('created_at', { ascending: false }).limit(1)`, access `rows[0]` — KHÔNG `.maybeSingle()`) → check `expires_at` < now → check `wrong_attempts >= 5` → so sánh `code` (sai → UPDATE `wrong_attempts + 1` theo kiểu đọc-rồi-ghi, **không atomic**) → query `users.id` by `sdt` (`.maybeSingle()`) → mark `used=true` → tạo token `crypto.randomBytes(32).toString('hex')` → INSERT `sessions {token, user_id}` → trả `{ ok: true, token }`. **Session KHÔNG có expiry** (chủ ý — verify-session cũng không check). Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
-  - **Đã tạo trên Supabase. Schema:** `CREATE TABLE sessions (token text PRIMARY KEY, user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE, created_at timestamptz DEFAULT now())`. FK phải → `public.users` (KHÔNG `auth.users`); `token` phải PK/UNIQUE để verify-session `.maybeSingle()` an toàn.
-  - **`users.sdt` đã có UNIQUE constraint**: lookup ở step query `users.id` dùng `.maybeSingle()` an toàn. (NULL được phép trùng trong UNIQUE Postgres nên owner row `sdt=NULL` không sao.)
-- **`api/verify-session.js`** — POST `{ token }`. Verify session token của driver và trả về thông tin user profile tương ứng. Flow: validate `token` → query `sessions` kết hợp join `users!user_id(id, role, full_name, sdt, owner_id)` để lấy profile của user đang liên kết với token session đó. Không kiểm tra expiry. Trả về thông tin profile định dạng JSON: `{ id, role, full_name, sdt, owner_id }`. Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
-- **`api/route-salary.js`** — GET/POST cho bộ nhớ lương theo tuyến (route-fixed, `co_dinh` mode). Auth: `Authorization: Bearer <supabase_jwt>` header → `sb.auth.getUser(token)` verify token người dùng + dùng chung `service_key` client để upsert bypass RLS (kiến trúc đúng: getUser verify, upsert bypass). Resolve-by-email (`users.id` ≠ Auth UUID, email từ JWT verified là dây nối ổn định) → chỉ `role='owner'` qua được (`owner_id` hoàn toàn từ server, KHÔNG nhận từ client). **Lưu ý: email KHÔNG có DB UNIQUE — chỉ app-enforce (addDriver/addSupervisor check `maybeSingle()`); chỉ `users.sdt` có DB UNIQUE.** Validate (áp dụng CẢ GET lẫn POST): `maTuyen` phải `typeof === 'string'` + trim + chặn `'XX'` (dùng biến `maTuyenClean`); `luongTaiXe` ép `Number()` + `Number.isInteger && > 0 && <= 100_000_000` (trần 100tr). Lỗi 500 ẩn `error.message` → trả `'db error'` + `console.error` chi tiết server-side. `GET ?maTuyen=DLK-SGN` → `{ luongTaiXe: number | null }`. `POST { maTuyen, luongTaiXe }` → upsert `route_salary`. Env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
-- **`api/parse-diem.js`** — POST `{ text }`. Parse text Zalo từ người gửi hàng → trích xuất thông tin liên hệ. Gọi OpenRouter (DeepSeek V3.2, `temperature: 0`) với few-shot SYSTEM_PROMPT. Trả `{ ten, sdt, dia_chi, ghi_chu }` — field thiếu là `''`, không bao giờ bịa. Validate `text` bắt buộc trước khi gọi API (trả 400 nếu rỗng — DeepSeek hallucinate khi input rỗng). Strip markdown fence từ response phòng thân. **Phân công công cụ**: endpoint này chỉ xử lý phần chữ; URL Google Maps/toạ độ là việc của `parseMapsUrl()` (regex) phía client — LLM không đụng tới. Env: `OPENROUTER_API_KEY`.
-- **`api/parse-hoi-thoai.js`** — POST `{ text }`. Parse đoạn hội thoại/tin nhắn vận chuyển → mảng nhiều điểm bốc/giao. Dùng cùng model + pattern với `parse-diem.js` nhưng trả `{ diems: [{loai, ten, sdt, dia_chi, ghi_chu}] }` — `loai`: `'boc'` hoặc `'giao'` (LLM đoán từ ngữ cảnh: "bốc/lấy/gom" → boc; "giao/trả/đến" → giao). Validate array trước khi trả. Khác `parse-diem.js`: max_tokens 800 (nhiều điểm hơn), trả array thay vì object đơn. Env: `OPENROUTER_API_KEY`.
-- **`api/phan-loai-bao-duong.js`** — POST `{ text }`. Phân loại mô tả bảo dưỡng tiếng Việt của tài xế → `{ loai, bo_phan }`. Dùng cùng model + pattern với `parse-diem.js` (DeepSeek V3.2, `temperature: 0`, strip markdown fence, 400 nếu text rỗng). `loai` ∈ `hong_hoc`/`linh_kien`/`lop_xe`/`dinh_ky` (few-shot: lốp→lop_xe, phụ tùng→linh_kien, sự cố→hong_hoc, định kỳ/đăng kiểm→dinh_ky). `bo_phan` ưu tiên khớp 21 PRESET_PARTS (liệt kê trong prompt), không bịa. **Validate server-side sau parse** (không tin LLM): `loai` không thuộc enum → ép `''`; `bo_phan` ép string + strip control char + cap 100 ký tự. **`PRESET_PARTS` bị duplicate** giữa file này, `vehicles.html`, và `driver-page.html` (sửa list phải đồng bộ CẢ 3 nơi). Wired vào `driver-page.html` (nút "✨ Tự điền loại & bộ phận" trong modal bảo dưỡng → `autoFillMaintLoai()`). Env: `OPENROUTER_API_KEY`.
+Tất cả dùng ESM (`import`/`export default`). `package.json` khai báo `"type": "module"`. Bảng env variables tổng hợp ngay dưới.
 
 ### Zalo OA / ZNS — vận hành
 
@@ -514,6 +292,15 @@ route_salary       (owner_id uuid NOT NULL REFERENCES public.users(id) ON DELETE
                    -- bộ nhớ lương tài xế theo tuyến đường chuẩn hóa (vd: 'DLK-SGN')
                    -- owner_id từ server (JWT-verified), KHÔNG từ client; chỉ co_dinh mode dùng
                    -- ma_tuyen derive từ deriveTuyen() trong route-pricing.js; không lưu nếu chứa 'XX'
+otp_codes      (id uuid PK, sdt text, code text, expires_at timestamptz,
+                used bool DEFAULT false, wrong_attempts int DEFAULT 0,
+                created_at timestamptz DEFAULT now())
+                -- OTP đăng nhập Zalo (driver+supervisor); chi tiết flow xem docs/api.md (send-otp/verify-otp)
+                -- created_at DEFAULT now() bắt buộc — cả 2 lớp rate-limit dựa vào nó
+sessions       (token text PK, user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+                created_at timestamptz DEFAULT now())
+                -- session token cho user Zalo (driver_token localStorage); KHÔNG có expiry (chủ ý)
+                -- FK user_id → public.users(id), KHÔNG auth.users; token PK để verify-session .maybeSingle() an toàn
 ```
 
 - `tai_xe_id` luôn = `users.id` (không phải Auth UUID).
