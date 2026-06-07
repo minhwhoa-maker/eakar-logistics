@@ -598,6 +598,12 @@
         return hint
     }
 
+    function parseSoLit(raw) {
+        if (raw == null) return null
+        const n = Number(String(raw).replace(/,/g, '.').replace(/[^0-9.]/g, ''))
+        return (Number.isFinite(n) && n > 0) ? n : null
+    }
+
     // ── Add Expense Form ──────────────────────────────────────────────
     function buildAddExpenseForm(tripId) {
         const wrap = document.createElement('div')
@@ -659,6 +665,25 @@
         soTienGroup.append(soTienLabel, soTienInput)
         addMoneyHint(soTienInput)
 
+        const litGroup = document.createElement('div')
+        litGroup.className = 'form-group'
+        const litLabel = document.createElement('label')
+        litLabel.textContent = 'Số lít (tùy chọn)'
+        const litInput = document.createElement('input')
+        litInput.type = 'text'
+        litInput.inputMode = 'decimal'
+        litInput.setAttribute('data-field', 'so_lit')
+        litGroup.append(litLabel, litInput)
+        litGroup.style.display = ''  // 'xang' là loại mặc định nên hiện sẵn
+        loaiSelect.addEventListener('change', () => {
+            if (loaiSelect.value === 'xang') {
+                litGroup.style.display = ''
+            } else {
+                litGroup.style.display = 'none'
+                litInput.value = ''
+            }
+        })
+
         const previewDiv = document.createElement('div')
         previewDiv.setAttribute('data-balance-preview', 'true')
         previewDiv.style.cssText = 'font-size:0.85em;color:var(--text-muted);padding:4px 0 8px;min-height:1.4em'
@@ -711,7 +736,7 @@
         btnCancel.onclick = closeActiveForm
         btnRow.append(btnSave, btnCancel)
 
-        wrap.append(balanceCard, h4, loaiGroup, nguonGroup, soTienGroup, previewDiv, moTaGroup, uploadGroup, btnRow)
+        wrap.append(balanceCard, h4, loaiGroup, nguonGroup, soTienGroup, litGroup, previewDiv, moTaGroup, uploadGroup, btnRow)
         return wrap
     }
 
@@ -757,12 +782,13 @@
                 return
             }
         }
+        const so_lit = loai === 'xang' ? parseSoLit(form.querySelector('[data-field="so_lit"]').value) : null
         const { error } = await sb.from('chi_phi_chuyen').insert({
             trip_id: tripId, loai, mo_ta: mo_ta || null, so_tien, anh_url,
             lat: loc.lat, lng: loc.lng,
             anh_realtime: activeReceiptIsRealtime,
             is_legacy: false,
-            nguon_tien
+            nguon_tien, so_lit
         })
         if (error) {
             showToast('Lỗi: ' + error.message, 'error')
@@ -771,6 +797,7 @@
         }
         form.querySelector('[data-field="so_tien"]').value = ''
         form.querySelector('[data-field="mo_ta"]').value = ''
+        form.querySelector('[data-field="so_lit"]').value = ''
         closeActiveForm()
         btnSave.disabled = false
         showToast('Đã thêm chi phí', 'success')
@@ -901,6 +928,27 @@
         const soTienHint = addMoneyHint(soTienInput)
         if (soTienInput.dataset.rawValue) soTienHint.textContent = numberToVietnamese(Number(soTienInput.dataset.rawValue))
 
+        const litGroup = document.createElement('div')
+        litGroup.className = 'form-group'
+        const litLabel = document.createElement('label')
+        litLabel.textContent = 'Số lít (tùy chọn)'
+        const litInput = document.createElement('input')
+        litInput.type = 'text'
+        litInput.inputMode = 'decimal'
+        litInput.setAttribute('data-field', 'so_lit')
+        if (exp.so_lit != null) litInput.value = exp.so_lit
+        litGroup.append(litLabel, litInput)
+        // Hiện nếu loại là xang, HOẶC record cũ có lít dù loại đã đổi (để user thấy & sửa)
+        litGroup.style.display = (exp.loai === 'xang' || exp.so_lit != null) ? '' : 'none'
+        loaiSelect.addEventListener('change', () => {
+            if (loaiSelect.value === 'xang') {
+                litGroup.style.display = ''
+            } else {
+                litGroup.style.display = 'none'
+                litInput.value = ''
+            }
+        })
+
         const moTaGroup = document.createElement('div')
         moTaGroup.className = 'form-group'
         const moTaLabel = document.createElement('label')
@@ -932,18 +980,18 @@
         const btnSave = document.createElement('button')
         btnSave.className = 'btn'
         btnSave.textContent = 'Lưu'
-        btnSave.onclick = () => submitEditExpense(exp.id, exp.anh_url, tripId)
+        btnSave.onclick = () => submitEditExpense(exp.id, exp.anh_url, tripId, exp.loai, exp.so_lit)
         const btnCancel = document.createElement('button')
         btnCancel.className = 'btn btn-gray'
         btnCancel.textContent = 'Hủy'
         btnCancel.onclick = closeActiveForm
         btnRow.append(btnSave, btnCancel)
 
-        wrap.append(loaiGroup, nguonEditGroup, soTienGroup, moTaGroup, uploadGroup, btnRow)
+        wrap.append(loaiGroup, nguonEditGroup, soTienGroup, litGroup, moTaGroup, uploadGroup, btnRow)
         return wrap
     }
 
-    async function submitEditExpense(expenseId, currentAnhUrl, tripId) {
+    async function submitEditExpense(expenseId, currentAnhUrl, tripId, oldLoai, oldSoLit) {
         const form = document.querySelector(`[data-form-id="edit-${expenseId}"]`)
         const loai = form.querySelector('[data-field="loai"]').value
         const soTienEl = form.querySelector('[data-field="so_tien"]')
@@ -974,6 +1022,15 @@
         }
         const nguon_tien_val = form.querySelector('[data-field="nguon_tien"]').value
         updatePayload.nguon_tien = nguon_tien_val || null
+        let so_lit
+        if (loai === 'xang') {
+            so_lit = parseSoLit(form.querySelector('[data-field="so_lit"]').value)
+        } else if (oldLoai === 'xang') {
+            so_lit = null              // vừa đổi xang→khác trong phiên này: dọn lít
+        } else {
+            so_lit = oldSoLit ?? null  // record vốn non-xang: giữ lít cũ
+        }
+        updatePayload.so_lit = so_lit
         const { error } = await sb.from('chi_phi_chuyen')
             .update(updatePayload)
             .eq('id', expenseId)
