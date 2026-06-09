@@ -33,6 +33,12 @@
 - Row highlight: click + touchend → xóa highlight cũ trên `#report-body tr`, set `background:#e3f2fd` cho row vừa tap
 - Header có nav đến driver/vehicles; có floating AI chatbot (FAB góc phải) gọi `/api/chat`; `driverMap` trong chatbot context filter `.eq('owner_id', currentOwnerProfileId)`
 
+**Card "Lãi/lỗ theo xe"** (`#lailo-section`, nằm giữa `.table-scroll` của trip table và `#status-message`)
+- Data gom **trong `loadTrips`** (không subscribe riêng — re-render mỗi khi `tripsChannel` fire). `start`/`endStr` được hoist `let ... = null` ra trước block `if(month)` để cụm bao_duong tái dùng filter tháng. Cụm `[query bao_duong → query xe → gom perXe → renderLaiLo]` đặt **ngay sau `setTotals(...)`, TRƯỚC nhánh `if (trips.length === 0) return`** — nên card vẫn render khi tháng 0 chuyến nhưng có bảo dưỡng
+- `bao_duong` query (`xe_id, chi_phi`, filter `.eq('owner_id', currentOwnerProfileId)`); nếu có `month` thì `.gte('ngay', start).lt('ngay', endStr)` — `bao_duong.ngay` là **date column** nên dùng `start`/`endStr` dạng `'YYYY-MM-DD'` KHÔNG suffix `T00:00:00` (khác trip table lọc `ngay_bat_dau` timestamptz). Hai hệ quy chiếu ngày khác nhau — chấp nhận
+- `perXe` gom theo `xe_id`: `{ doanhThu, chiPhiChuyen, luong, baoDuong }`; trips không gắn xe + bao_duong không gắn xe gom vào key `'__no_xe__'` (nhãn "Không gắn xe"). Mọi phép cộng bọc `toNumber()`
+- `renderLaiLo(perXe, xeMap)`: guard `Object.keys(perXe).length===0` → clear section + return (ẩn card khi không có data nào). Dựng `.stat-card` + `.table-scroll wide`; cột Biển số | Doanh thu | Chi phí | Lãi/lỗ; **chi phí gộp** = chiPhiChuyen + luong + baoDuong; lãi = doanhThu − chiPhi (màu `--success`/`--danger`). Sort lãi tăng dần (lỗ nặng lên đầu). Dòng TỔNG in đậm + `border-top`. `formatBienSo()` cho biển số (KHÔNG áp cho key `'__no_xe__'`)
+
 **Notify panel** (chung cho 4 trang owner)
 - `#btn-notify` → `#notify-panel` (fixed top:64px right:16px, click-outside để đóng), 4 toggle (notify_new_trip / notify_complete / notify_expense / notify_maintenance), load/save qua `notify_settings`
 - `setupPushNotifications(userId)` chạy mỗi lần login

@@ -228,8 +228,9 @@ trips          (id, owner_id, ngay_bat_dau, ngay_ket_thuc, tuyen_duong, doanh_th
                 -- km_ke_hoach: km tính từ Google Maps khi owner tạo chuyến
                 -- km_duyet: nullable, km thực tế sau khi chuyến kết thúc (chưa dùng)
 chi_phi_chuyen (id, trip_id, loai, mo_ta, so_tien, anh_url, created_at, lat, lng,
-                anh_realtime bool, is_legacy bool DEFAULT false, nguon_tien text)
+                anh_realtime bool, is_legacy bool DEFAULT false, nguon_tien text, so_lit numeric)
                 -- loai: 'xang' | 'bai_xe' | 'khac'  (sua_xe đã bỏ — sửa chữa dùng bao_duong)
+                -- so_lit: nullable, số lít xăng (chỉ nhập cho loai='xang')
                 -- anh_url: public URL từ storage bucket 'receipts'
                 -- lat/lng: nullable, tọa độ GPS khi thêm chi phí
                 -- anh_realtime: true=ảnh chụp camera realtime, false=upload từ gallery, null=không xác định/không có ảnh
@@ -301,8 +302,6 @@ sessions       (token text PK, user_id uuid NOT NULL REFERENCES public.users(id)
                 created_at timestamptz DEFAULT now())
                 -- session token cho user Zalo (driver_token localStorage); KHÔNG có expiry (chủ ý)
                 -- FK user_id → public.users(id), KHÔNG auth.users; token PK để verify-session .maybeSingle() an toàn
-                chi_phi_chuyen (id, trip_id, loai, mo_ta, so_tien, anh_url, created_at, lat, lng,
-                anh_realtime bool, is_legacy bool DEFAULT false, nguon_tien text, so_lit numeric)
 ```
 
 - `tai_xe_id` luôn = `users.id` (không phải Auth UUID).
