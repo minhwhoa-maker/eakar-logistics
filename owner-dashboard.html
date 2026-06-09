@@ -126,6 +126,7 @@
                     </tbody>
                 </table>
             </div>
+            <div id="lailo-section"></div>
             <div id="status-message" hidden></div>
         </div>
         <script>
@@ -276,14 +277,91 @@
                 })
             }
 
+            function renderLaiLo(perXe, xeMap) {
+                const section = document.getElementById('lailo-section')
+                section.textContent = ''
+                if (Object.keys(perXe).length === 0) return
+
+                // gom thành mảng + tính lãi/chi phí
+                const rows = Object.keys(perXe).map(key => {
+                    const g = perXe[key]
+                    const chiPhi = toNumber(g.chiPhiChuyen) + toNumber(g.luong) + toNumber(g.baoDuong)
+                    const lai = toNumber(g.doanhThu) - chiPhi
+                    const label = key === '__no_xe__' ? 'Không gắn xe' : formatBienSo(xeMap[key] || '')
+                    return { label, doanhThu: toNumber(g.doanhThu), chiPhi, lai }
+                })
+                rows.sort((a, b) => a.lai - b.lai) // lỗ nặng nhất lên đầu
+
+                const card = document.createElement('div')
+                card.className = 'stat-card'
+
+                const title = document.createElement('h3')
+                title.textContent = '📊 Lãi/lỗ theo xe'
+                title.style.margin = '0 0 12px'
+                card.appendChild(title)
+
+                const scroll = document.createElement('div')
+                scroll.className = 'table-scroll wide'
+                const table = document.createElement('table')
+
+                const thead = document.createElement('thead')
+                const htr = document.createElement('tr')
+                ;['Biển số', 'Doanh thu', 'Chi phí', 'Lãi/lỗ'].forEach(h => {
+                    const th = document.createElement('th')
+                    th.textContent = h
+                    htr.appendChild(th)
+                })
+                thead.appendChild(htr)
+                table.appendChild(thead)
+
+                const tbody = document.createElement('tbody')
+                let sumDT = 0, sumCP = 0, sumLai = 0
+                rows.forEach(r => {
+                    sumDT += r.doanhThu; sumCP += r.chiPhi; sumLai += r.lai
+                    const tr = document.createElement('tr')
+                    const cells = [r.label, formatMoney(r.doanhThu), formatMoney(r.chiPhi), formatMoney(r.lai)]
+                    cells.forEach((val, i) => {
+                        const td = document.createElement('td')
+                        td.textContent = val
+                        if (i === 3) {
+                            if (r.lai > 0) td.style.color = 'var(--success)'
+                            else if (r.lai < 0) td.style.color = 'var(--danger)'
+                        }
+                        tr.appendChild(td)
+                    })
+                    tbody.appendChild(tr)
+                })
+
+                const totalTr = document.createElement('tr')
+                const totals = ['TỔNG', formatMoney(sumDT), formatMoney(sumCP), formatMoney(sumLai)]
+                totals.forEach((val, i) => {
+                    const td = document.createElement('td')
+                    td.textContent = val
+                    td.style.fontWeight = '700'
+                    td.style.borderTop = '2px solid var(--border)'
+                    if (i === 3) {
+                        if (sumLai > 0) td.style.color = 'var(--success)'
+                        else if (sumLai < 0) td.style.color = 'var(--danger)'
+                    }
+                    totalTr.appendChild(td)
+                })
+                tbody.appendChild(totalTr)
+
+                table.appendChild(tbody)
+                scroll.appendChild(table)
+                card.appendChild(scroll)
+                section.appendChild(card)
+            }
+
             async function loadTrips() {
                 let query = sb.from('trips').select('*').eq('owner_id', currentOwnerProfileId).order('ngay_bat_dau', { ascending: false })
                 const month = document.getElementById('filter-month').value
+                let start = null, endStr = null
                 if (month) {
-                    const start = month + '-01'
+                    start = month + '-01'
                     const end = new Date(month + '-01')
                     end.setMonth(end.getMonth() + 1)
-                    const endStr = end.toISOString().split('T')[0]
+                    endStr = end.toISOString().split('T')[0]
                     query = query.gte('ngay_bat_dau', start + 'T00:00:00').lt('ngay_bat_dau', endStr + 'T00:00:00')
                 }
 
@@ -303,6 +381,32 @@
                 if (Array.isArray(drivers)) drivers.forEach(d => { driverMap[d.id] = d.full_name })
 
                 setTotals(totalDT, totalCP, totalluong)
+
+                // ── Lãi/lỗ theo xe ──
+                let bdQuery = sb.from('bao_duong').select('xe_id, chi_phi').eq('owner_id', currentOwnerProfileId)
+                if (month) bdQuery = bdQuery.gte('ngay', start).lt('ngay', endStr)
+                const { data: baoDuong } = await bdQuery
+                const bdList = Array.isArray(baoDuong) ? baoDuong : []
+
+                const { data: xeRows } = await sb.from('xe').select('id, bien_so').eq('owner_id', currentOwnerProfileId)
+                const xeMap = {}
+                if (Array.isArray(xeRows)) xeRows.forEach(x => { xeMap[x.id] = x.bien_so })
+
+                const perXe = {}
+                function nhom(key) {
+                    if (!perXe[key]) perXe[key] = { doanhThu: 0, chiPhiChuyen: 0, luong: 0, baoDuong: 0 }
+                    return perXe[key]
+                }
+                trips.forEach(t => {
+                    const g = nhom(t.xe_id || '__no_xe__')
+                    g.doanhThu += toNumber(t.doanh_thu)
+                    g.chiPhiChuyen += toNumber(t.chi_phi)
+                    g.luong += toNumber(t.luong_chuyen)
+                })
+                bdList.forEach(bd => {
+                    nhom(bd.xe_id || '__no_xe__').baoDuong += toNumber(bd.chi_phi)
+                })
+                renderLaiLo(perXe, xeMap)
 
                 if (trips.length === 0) {
                     document.getElementById('report-body').textContent = ''
