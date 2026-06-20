@@ -215,11 +215,16 @@
             tam_nghi: '🔴 Tạm nghỉ'
         }
         const maintenanceTypes = [
-            ['hong_hoc', 'Hỏng hóc'],
-            ['linh_kien', 'Linh kiện'],
-            ['lop_xe', 'Lốp xe'],
-            ['dinh_ky', 'Định kỳ']
+            ['sua', 'Sửa'],
+            ['thay_moi', 'Thay mới'],
+            ['giay_to', 'Giấy tờ']
         ]
+        const LEGACY_LOAI_LABELS = {
+            hong_hoc: 'Hỏng hóc (cũ)',
+            linh_kien: 'Linh kiện (cũ)',
+            lop_xe: 'Lốp xe (cũ)',
+            dinh_ky: 'Định kỳ (cũ)'
+        }
 
         const LOAI_XE_OPTIONS = [
             { value: 'xe_nhe',   label: 'Xe nhẹ (<3.5T)' },
@@ -378,14 +383,40 @@
             else loadVehicles()
         }
 
-        const PRESET_PARTS = [
-            'Lốp trước trái', 'Lốp trước phải', 'Lốp sau trái', 'Lốp sau phải',
-            'Nhớt động cơ', 'Lọc dầu', 'Lọc gió', 'Lọc nhiên liệu',
-            'Má phanh trước', 'Má phanh sau', 'Đĩa phanh',
-            'Ắc quy', 'Bugi', 'Dây curoa',
-            'Đèn pha', 'Đèn hậu', 'Gương chiếu hậu',
-            'Thay dầu hộp số', 'Bảo dưỡng điều hòa', 'Đăng kiểm', 'Bảo hiểm'
-        ]
+        const PARTS_BY_NHOM = {
+            'Phanh':   ['Má phanh trước', 'Má phanh sau', 'Đĩa phanh'],
+            'Lốp':     ['Lốp trước trái', 'Lốp trước phải', 'Lốp sau trái', 'Lốp sau phải'],
+            'Động cơ': ['Nhớt động cơ', 'Lọc dầu', 'Lọc gió', 'Lọc nhiên liệu', 'Bugi', 'Dây curoa'],
+            'Điện':    ['Ắc quy', 'Đèn pha', 'Đèn hậu'],
+            'Khác':    ['Gương chiếu hậu', 'Thay dầu hộp số', 'Bảo dưỡng điều hòa']
+        }
+
+        function filterModalBoPhan() {
+            const nhom = document.getElementById('maint-modal-nhom').value
+            const datalist = document.getElementById('maint-modal-bophan-list')
+            if (!datalist) return
+            datalist.textContent = ''
+            const parts = PARTS_BY_NHOM[nhom] || []
+            parts.forEach(part => {
+                const opt = document.createElement('option')
+                opt.value = part
+                datalist.appendChild(opt)
+            })
+        }
+
+        function applyLoaiVisibility() {
+            const isGiayTo = document.getElementById('maint-modal-loai').value === 'giay_to'
+            const rows = ['row-maint-nhom', 'row-maint-bophan', 'row-maint-hinhthuc']
+            rows.forEach(id => {
+                const el = document.getElementById(id)
+                if (el) el.style.display = isGiayTo ? 'none' : ''
+            })
+            if (isGiayTo) {
+                document.getElementById('maint-modal-nhom').value = ''
+                document.getElementById('maint-modal-bophan').value = ''
+                document.getElementById('maint-modal-hinh-thuc').value = ''
+            }
+        }
 
 
         async function loadVehicles() {
@@ -581,7 +612,10 @@
             const today = new Date().toISOString().split('T')[0]
             document.getElementById('maint-modal-ngay').value = today
             document.getElementById('maint-modal-bophan').value = ''
+            document.getElementById('maint-modal-nhom').value = ''
             document.getElementById('maint-modal-loai').value = maintenanceTypes[0][0]
+            applyLoaiVisibility()
+            filterModalBoPhan()
             document.getElementById('maint-modal-mota').value = ''
             const chiPhiEl = document.getElementById('maint-modal-chiphi')
             chiPhiEl.value = ''
@@ -616,17 +650,6 @@
                 setMaintenanceMessage(historyContainer, 'Không thể tải lịch sử bảo dưỡng')
                 showToast('Lỗi: ' + error.message, 'error')
                 return
-            }
-
-            const uniqueParts = [...new Set([...(data || []).map(m => m.bo_phan).filter(Boolean), ...PRESET_PARTS])]
-            const datalist = document.getElementById('maint-modal-bophan-list')
-            if (datalist) {
-                datalist.textContent = ''
-                uniqueParts.forEach(part => {
-                    const opt = document.createElement('option')
-                    opt.value = part
-                    datalist.appendChild(opt)
-                })
             }
 
             const dataParts = [...new Set((data || []).map(m => m.bo_phan).filter(Boolean))]
@@ -720,7 +743,7 @@
                     addCell(row, formatDate(m.ngay))
                     addCell(row, m.bo_phan || '-')
                     addCell(row, m.nguoi_nhap === 'driver' ? '👤 ' + (m.tai_xe?.full_name || 'Tài xế') : m.nguoi_nhap === 'owner' ? '🏢 Chủ xe' : '-')
-                    addCell(row, loaiLabels[m.loai] || m.loai || '-')
+                    addCell(row, loaiLabels[m.loai] || LEGACY_LOAI_LABELS[m.loai] || m.loai || '-')
                     const moTaCell = document.createElement('td')
                     moTaCell.textContent = m.mo_ta || '-'
                     if (m.hinh_thuc_sua === 'tai_gara' || m.hinh_thuc_sua === 'luu_dong') {
@@ -770,15 +793,21 @@
             const chiPhiEl = document.getElementById('maint-modal-chiphi')
             const chiPhiRaw = chiPhiEl.dataset.rawValue || chiPhiEl.value.replace(/\./g, '')
             const chi_phi = chiPhiRaw === '' ? null : Number(chiPhiRaw)
-            const bo_phan = document.getElementById('maint-modal-bophan').value.trim() || null
+            const isGiayTo = loai === 'giay_to'
+            const nhom = isGiayTo ? null : (document.getElementById('maint-modal-nhom').value || '')
+            const bo_phan = isGiayTo ? null : (document.getElementById('maint-modal-bophan').value.trim() || null)
             const ngay_tiep_theo = document.getElementById('maint-modal-ngaytiep').value || null
-            const hinh_thuc_sua = document.getElementById('maint-modal-hinh-thuc').value
+            const hinh_thuc_sua = isGiayTo ? null : document.getElementById('maint-modal-hinh-thuc').value
 
             if (!ngay) {
                 showToast('Vui lòng chọn ngày!', 'error')
                 return
             }
-            if (!hinh_thuc_sua) {
+            if (!isGiayTo && !nhom) {
+                showToast('Vui lòng chọn nhóm', 'error')
+                return
+            }
+            if (!isGiayTo && !hinh_thuc_sua) {
                 showToast('Vui lòng chọn hình thức sửa', 'error')
                 return
             }
@@ -787,13 +816,15 @@
                 return
             }
 
-            const { error } = await sb.from('bao_duong').insert({ owner_id: ownerProfileId, xe_id: xeId, ngay, loai, mo_ta, chi_phi, bo_phan, ngay_tiep_theo, hinh_thuc_sua })
+            const { error } = await sb.from('bao_duong').insert({ owner_id: ownerProfileId, xe_id: xeId, ngay, loai, nhom, mo_ta, chi_phi, bo_phan, ngay_tiep_theo, hinh_thuc_sua })
             if (error) {
                 showToast('Lỗi: ' + error.message, 'error')
                 return
             }
 
             document.getElementById('maint-modal-bophan').value = ''
+            document.getElementById('maint-modal-nhom').value = ''
+            filterModalBoPhan()
             document.getElementById('maint-modal-mota').value = ''
             const chiPhiResetEl = document.getElementById('maint-modal-chiphi')
             chiPhiResetEl.value = ''
@@ -1192,20 +1223,30 @@
                 <input type="date" id="maint-modal-ngay" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;box-sizing:border-box">
             </div>
             <div style="margin-bottom:12px">
+                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Loại</label>
+                <select id="maint-modal-loai" onchange="applyLoaiVisibility()" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:#1a1a2e;background:white;box-sizing:border-box">
+                    <option value="sua">Sửa</option>
+                    <option value="thay_moi">Thay mới</option>
+                    <option value="giay_to">Giấy tờ</option>
+                </select>
+            </div>
+            <div id="row-maint-nhom" style="margin-bottom:12px">
+                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Nhóm</label>
+                <select id="maint-modal-nhom" onchange="filterModalBoPhan()" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:#1a1a2e;background:white;box-sizing:border-box">
+                    <option value="">-- Chọn nhóm --</option>
+                    <option value="Phanh">Phanh</option>
+                    <option value="Lốp">Lốp</option>
+                    <option value="Động cơ">Động cơ</option>
+                    <option value="Điện">Điện</option>
+                    <option value="Khác">Khác</option>
+                </select>
+            </div>
+            <div id="row-maint-bophan" style="margin-bottom:12px">
                 <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Bộ phận</label>
                 <input type="text" id="maint-modal-bophan" list="maint-modal-bophan-list" placeholder="Bộ phận (vd: lốp trước trái)" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;box-sizing:border-box">
                 <datalist id="maint-modal-bophan-list"></datalist>
             </div>
-            <div style="margin-bottom:12px">
-                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Loại</label>
-                <select id="maint-modal-loai" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:#1a1a2e;background:white;box-sizing:border-box">
-                    <option value="hong_hoc">Hỏng hóc</option>
-                    <option value="linh_kien">Linh kiện</option>
-                    <option value="lop_xe">Lốp xe</option>
-                    <option value="dinh_ky">Định kỳ</option>
-                </select>
-            </div>
-            <div style="margin-bottom:12px">
+            <div id="row-maint-hinhthuc" style="margin-bottom:12px">
                 <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:4px">Hình thức sửa</label>
                 <select id="maint-modal-hinh-thuc" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;color:#1a1a2e;background:white;box-sizing:border-box">
                     <option value="">-- Chọn hình thức --</option>

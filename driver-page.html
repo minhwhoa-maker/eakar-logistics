@@ -83,6 +83,17 @@
                 <input type="date" id="maint-ngay">
             </div>
             <div class="form-group">
+                <label>Nhóm</label>
+                <select id="maint-nhom" onchange="filterDriverBoPhan()" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:15px;color:#1a1a2e;background:white">
+                    <option value="">-- Chọn nhóm --</option>
+                    <option value="Phanh">Phanh</option>
+                    <option value="Lốp">Lốp</option>
+                    <option value="Động cơ">Động cơ</option>
+                    <option value="Điện">Điện</option>
+                    <option value="Khác">Khác</option>
+                </select>
+            </div>
+            <div class="form-group">
                 <label>Bộ phận</label>
                 <input type="text" id="maint-bophan" list="maint-bophan-list" placeholder="vd: lốp trước trái">
                 <datalist id="maint-bophan-list"></datalist>
@@ -90,10 +101,8 @@
             <div class="form-group">
                 <label>Loại</label>
                 <select id="maint-loai" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:15px;color:#1a1a2e;background:white">
-                    <option value="hong_hoc">Hỏng hóc</option>
-                    <option value="linh_kien">Linh kiện</option>
-                    <option value="lop_xe">Lốp xe</option>
-                    <option value="dinh_ky">Định kỳ</option>
+                    <option value="sua">Sửa</option>
+                    <option value="thay_moi">Thay mới</option>
                 </select>
             </div>
             <div class="form-group">
@@ -1198,20 +1207,30 @@
     }
 
     // ── Maintenance ───────────────────────────────────────────────────
-    const PRESET_PARTS = [
-        'Lốp trước trái', 'Lốp trước phải', 'Lốp sau trái', 'Lốp sau phải',
-        'Nhớt động cơ', 'Lọc dầu', 'Lọc gió', 'Lọc nhiên liệu',
-        'Má phanh trước', 'Má phanh sau', 'Đĩa phanh',
-        'Ắc quy', 'Bugi', 'Dây curoa',
-        'Đèn pha', 'Đèn hậu', 'Gương chiếu hậu',
-        'Thay dầu hộp số', 'Bảo dưỡng điều hòa', 'Đăng kiểm', 'Bảo hiểm'
-    ]
+    const PARTS_BY_NHOM = {
+        'Phanh':   ['Má phanh trước', 'Má phanh sau', 'Đĩa phanh'],
+        'Lốp':     ['Lốp trước trái', 'Lốp trước phải', 'Lốp sau trái', 'Lốp sau phải'],
+        'Động cơ': ['Nhớt động cơ', 'Lọc dầu', 'Lọc gió', 'Lọc nhiên liệu', 'Bugi', 'Dây curoa'],
+        'Điện':    ['Ắc quy', 'Đèn pha', 'Đèn hậu'],
+        'Khác':    ['Gương chiếu hậu', 'Thay dầu hộp số', 'Bảo dưỡng điều hòa']
+    }
+    const NHOM_KEYS = ['Phanh', 'Lốp', 'Động cơ', 'Điện', 'Khác']
 
     const MAINT_TYPES = {
-        hong_hoc: 'Hỏng hóc',
-        linh_kien: 'Linh kiện',
-        lop_xe: 'Lốp xe',
-        dinh_ky: 'Định kỳ'
+        sua: 'Sửa',
+        thay_moi: 'Thay mới'
+    }
+
+    function filterDriverBoPhan() {
+        const nhom = document.getElementById('maint-nhom').value
+        const datalist = document.getElementById('maint-bophan-list')
+        datalist.textContent = ''
+        const parts = PARTS_BY_NHOM[nhom] || []
+        parts.forEach(item => {
+            const opt = document.createElement('option')
+            opt.value = item
+            datalist.appendChild(opt)
+        })
     }
 
     function handleMaintFileSelect(input) {
@@ -1236,7 +1255,8 @@
     async function openMaintenanceModal() {
         document.getElementById('maint-ngay').value = new Date().toISOString().split('T')[0]
         document.getElementById('maint-bophan').value = ''
-        document.getElementById('maint-loai').value = 'hong_hoc'
+        document.getElementById('maint-nhom').value = ''
+        document.getElementById('maint-loai').value = 'sua'
         document.getElementById('maint-hinh-thuc').value = ''
         document.getElementById('maint-mota').value = ''
         const chiPhiEl = document.getElementById('maint-chiphi')
@@ -1245,15 +1265,7 @@
         const nextSib = chiPhiEl.nextElementSibling
         if (nextSib && nextSib.tagName === 'SMALL') nextSib.textContent = ''
         clearMaintReceipt()
-        const { data } = await sb.from('bao_duong').select('bo_phan').eq('xe_id', currentXeId)
-        const unique = [...new Set([...(data || []).map(d => d.bo_phan).filter(Boolean), ...PRESET_PARTS])]
-        const datalist = document.getElementById('maint-bophan-list')
-        datalist.textContent = ''
-        unique.forEach(item => {
-            const opt = document.createElement('option')
-            opt.value = item
-            datalist.appendChild(opt)
-        })
+        filterDriverBoPhan()
         if (!maintChiPhiInitialized) {
             addMoneyHint(document.getElementById('maint-chiphi'))
             maintChiPhiInitialized = true
@@ -1283,9 +1295,13 @@
                 body: JSON.stringify({ text })
             })
             if (!r.ok) { showToast('Không gợi ý được, chọn tay nhé'); return }
-            const { loai, bo_phan } = await r.json()
-            if (['hong_hoc', 'linh_kien', 'lop_xe', 'dinh_ky'].includes(loai)) {
+            const { loai, nhom, bo_phan } = await r.json()
+            if (['sua', 'thay_moi'].includes(loai)) {
                 document.getElementById('maint-loai').value = loai
+            }
+            if (NHOM_KEYS.includes(nhom)) {
+                document.getElementById('maint-nhom').value = nhom
+                filterDriverBoPhan()
             }
             if (bo_phan) document.getElementById('maint-bophan').value = bo_phan
             showToast('Đã gợi ý — kiểm tra lại trước khi lưu', 'success')
@@ -1300,6 +1316,7 @@
     async function submitMaintenance() {
         const ngay = document.getElementById('maint-ngay').value
         const bo_phan = document.getElementById('maint-bophan').value.trim()
+        const nhom = document.getElementById('maint-nhom').value
         const loai = document.getElementById('maint-loai').value
         const mo_ta = document.getElementById('maint-mota').value.trim()
         const hinh_thuc_sua = document.getElementById('maint-hinh-thuc').value
@@ -1307,6 +1324,7 @@
         const chiPhiVal = chiPhiEl.dataset.rawValue || chiPhiEl.value
         const chi_phi = Number(chiPhiVal)
         if (!ngay) { showToast('Vui lòng chọn ngày', 'error'); return }
+        if (!nhom) { showToast('Vui lòng chọn nhóm', 'error'); return }
         if (!bo_phan) { showToast('Vui lòng nhập bộ phận', 'error'); return }
         if (!hinh_thuc_sua) { showToast('Vui lòng chọn hình thức sửa', 'error'); return }
         if (!chiPhiVal || !Number.isFinite(chi_phi) || chi_phi < 0) { showToast('Vui lòng nhập chi phí hợp lệ', 'error'); return }
@@ -1335,7 +1353,7 @@
         const { error } = await sb.from('bao_duong').insert({
             owner_id: currentOwnerId,
             xe_id: currentXeId,
-            ngay, loai, bo_phan,
+            ngay, loai, nhom, bo_phan,
             hinh_thuc_sua,
             mo_ta: mo_ta || null,
             chi_phi,
